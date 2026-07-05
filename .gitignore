@@ -5,11 +5,12 @@ __pycache__/
 # Local run/session flags and reports
 ai-service/flags/
 
-# VS Code directory (optional configuration)
+# VS Code directory (optional configuration!! had this in my folder for some reasons)
 .vscode/
 
 # Environment
 .env
 *.env
 
+# Node modules
 node_modules/
