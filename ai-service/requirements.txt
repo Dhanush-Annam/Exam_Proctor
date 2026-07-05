@@ -1,0 +1,8 @@
+opencv-python
+dlib
+imutils
+numpy
+mediapipe==0.10.14
+fastapi
+uvicorn
+python-multipart

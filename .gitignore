@@ -3,7 +3,11 @@ __pycache__/
 *.pyc
 
 # Local run/session flags and reports
-flags/
+ai-service/flags/
 
 # VS Code directory (optional configuration)
 .vscode/
+
+# Environment
+.env
+*.env
