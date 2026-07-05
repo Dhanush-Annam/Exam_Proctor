@@ -5,10 +5,5 @@ __pycache__/
 # Local run/session flags and reports
 flags/
 
-# Large pre-trained model files
-models/L2CSNet_gaze360.pkl
-models/res10_300x300_ssd_iter_140000.caffemodel
-models/shape_predictor_68_face_landmarks.dat
-
 # VS Code directory (optional configuration)
 .vscode/
