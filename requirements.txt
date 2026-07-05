@@ -1,0 +1,5 @@
+opencv-python
+dlib
+imutils
+numpy
+mediapipe==0.10.14
