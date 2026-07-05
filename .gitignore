@@ -11,3 +11,5 @@ ai-service/flags/
 # Environment
 .env
 *.env
+
+node_modules/
