@@ -30,6 +30,8 @@ export const createExam = (data: any) => API.post('/api/exams', data);
 export const getExaminerExams = ()   => API.get('/api/exams/examiner');
 export const updateExamStatus = (id: string, status: string) =>
     API.patch(`/api/exams/${id}/status`, { status });
+export const updateExam = (id: string, data: any) =>
+    API.put(`/api/exams/${id}`, data);
 
 // ── Proctor ──────────────────────────────────────────────
 export const analyzeFrame = (formData: FormData) =>

@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getExaminerExams, createExam, updateExamStatus, getProctorSessions } from '@/lib/api';
+import { getExaminerExams, createExam, updateExamStatus, getProctorSessions, updateExam } from '@/lib/api';
 
 interface Question {
-    questionText: string;
+    question: string;
     options: string[];
+    answer?: string;
 }
 
 interface Exam {
@@ -87,8 +88,9 @@ export default function DashboardPage() {
     const [examTitle, setExamTitle] = useState('');
     const [examDuration, setExamDuration] = useState(60);
     const [formQuestions, setFormQuestions] = useState<Question[]>([
-        { questionText: '', options: ['', '', '', ''] }
+        { question: '', options: ['', '', '', ''], answer: '' }
     ]);
+    const [editingExamId, setEditingExamId] = useState<string | null>(null);
 
     // Active session details modal state
     const [selectedSession, setSelectedSession] = useState<ProctorSession | null>(null);
@@ -144,7 +146,7 @@ export default function DashboardPage() {
 
     // Question Form Actions
     const handleAddQuestion = () => {
-        setFormQuestions([...formQuestions, { questionText: '', options: ['', '', '', ''] }]);
+        setFormQuestions([...formQuestions, { question: '', options: ['', '', '', ''], answer: '' }]);
     };
 
     const handleRemoveQuestion = (idx: number) => {
@@ -154,14 +156,45 @@ export default function DashboardPage() {
 
     const handleQuestionTextChange = (idx: number, text: string) => {
         const updated = [...formQuestions];
-        updated[idx].questionText = text;
+        updated[idx].question = text;
         setFormQuestions(updated);
     };
 
     const handleOptionTextChange = (qIdx: number, oIdx: number, text: string) => {
         const updated = [...formQuestions];
+        const oldVal = updated[qIdx].options[oIdx];
         updated[qIdx].options[oIdx] = text;
+        if (updated[qIdx].answer === oldVal) {
+            updated[qIdx].answer = text;
+        }
         setFormQuestions(updated);
+    };
+
+    const handleStartEditExam = (exam: Exam) => {
+        setEditingExamId(exam.id);
+        setExamTitle(exam.title);
+        setExamDuration(exam.duration_minutes);
+        
+        const mappedQuestions = exam.questions.map((q: any) => ({
+            question: q.question || q.questionText || '',
+            options: q.options || ['', '', '', ''],
+            answer: q.answer || ''
+        }));
+        
+        setFormQuestions(mappedQuestions);
+        setActiveTab('create');
+        setError('');
+        setSuccess('');
+    };
+
+    const handleCancelEdit = () => {
+        setEditingExamId(null);
+        setExamTitle('');
+        setExamDuration(60);
+        setFormQuestions([{ question: '', options: ['', '', '', ''], answer: '' }]);
+        setActiveTab('exams');
+        setError('');
+        setSuccess('');
     };
 
     const handleCreateExamSubmit = async (e: React.FormEvent) => {
@@ -176,7 +209,7 @@ export default function DashboardPage() {
         }
         for (let i = 0; i < formQuestions.length; i++) {
             const q = formQuestions[i];
-            if (!q.questionText.trim()) {
+            if (!q.question.trim()) {
                 setError(`Please enter text for Question ${i + 1}`);
                 return;
             }
@@ -184,23 +217,37 @@ export default function DashboardPage() {
                 setError(`Please fill in all options for Question ${i + 1}`);
                 return;
             }
+            if (!q.answer || !q.answer.trim()) {
+                setError(`Please select the correct answer for Question ${i + 1}`);
+                return;
+            }
         }
 
         try {
-            await createExam({
-                title: examTitle,
-                duration_minutes: examDuration,
-                questions: formQuestions
-            });
+            if (editingExamId) {
+                await updateExam(editingExamId, {
+                    title: examTitle,
+                    duration_minutes: examDuration,
+                    questions: formQuestions
+                });
+                setSuccess('Exam updated successfully!');
+            } else {
+                await createExam({
+                    title: examTitle,
+                    duration_minutes: examDuration,
+                    questions: formQuestions
+                });
+                setSuccess('Exam created successfully as Draft!');
+            }
 
-            setSuccess('Exam created successfully as Draft!');
+            setEditingExamId(null);
             setExamTitle('');
             setExamDuration(60);
-            setFormQuestions([{ questionText: '', options: ['', '', '', ''] }]);
+            setFormQuestions([{ question: '', options: ['', '', '', ''], answer: '' }]);
             setActiveTab('exams');
             loadDashboardData();
         } catch (err: any) {
-            setError(err.response?.data?.error || 'Failed to create exam');
+            setError(err.response?.data?.error || `Failed to ${editingExamId ? 'update' : 'create'} exam`);
         }
     };
 
@@ -410,6 +457,12 @@ export default function DashboardPage() {
                                                         {exam.status === 'active' && 'Close Exam'}
                                                         {exam.status === 'closed' && 'Set to Draft'}
                                                     </button>
+                                                    <button
+                                                        onClick={() => handleStartEditExam(exam)}
+                                                        className="px-3 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-300 hover:text-white rounded-lg transition duration-200 cursor-pointer"
+                                                    >
+                                                        Edit
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}
@@ -421,9 +474,24 @@ export default function DashboardPage() {
                         {/* TAB 2: CREATE EXAM FORM */}
                         {activeTab === 'create' && (
                             <div>
-                                <div className="mb-8">
-                                    <h1 className="text-3xl font-extrabold text-white">Create New Exam</h1>
-                                    <p className="text-slate-400 text-sm mt-1">Design questions and parameters for a proctored examination.</p>
+                                <div className="mb-8 flex justify-between items-center">
+                                    <div>
+                                        <h1 className="text-3xl font-extrabold text-white">
+                                            {editingExamId ? 'Edit Exam' : 'Create New Exam'}
+                                        </h1>
+                                        <p className="text-slate-400 text-sm mt-1">
+                                            {editingExamId ? 'Modify questions and parameters for this examination.' : 'Design questions and parameters for a proctored examination.'}
+                                        </p>
+                                    </div>
+                                    {editingExamId && (
+                                        <button
+                                            type="button"
+                                            onClick={handleCancelEdit}
+                                            className="px-4 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-red-400 hover:text-red-300 rounded-xl transition duration-200 cursor-pointer"
+                                        >
+                                            Cancel Edit
+                                        </button>
+                                    )}
                                 </div>
 
                                 <form onSubmit={handleCreateExamSubmit} className="space-y-6">
@@ -498,7 +566,7 @@ export default function DashboardPage() {
                                                     </label>
                                                     <input
                                                         type="text"
-                                                        value={q.questionText}
+                                                        value={q.question}
                                                         onChange={e => handleQuestionTextChange(qIdx, e.target.value)}
                                                         placeholder="Enter the question query here..."
                                                         className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -506,18 +574,34 @@ export default function DashboardPage() {
                                                     />
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     {q.options.map((option, oIdx) => (
-                                                        <div key={oIdx}>
-                                                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                                                                Option {String.fromCharCode(65 + oIdx)}
-                                                            </label>
+                                                        <div key={oIdx} className="bg-slate-950/30 p-3 rounded-xl border border-slate-850 flex flex-col gap-2">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-[10px] font-bold text-slate-500 uppercase">
+                                                                    Option {String.fromCharCode(65 + oIdx)}
+                                                                </span>
+                                                                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`correct_ans_${qIdx}`}
+                                                                        checked={q.answer === option && option !== ''}
+                                                                        onChange={() => {
+                                                                            const updated = [...formQuestions];
+                                                                            updated[qIdx].answer = option;
+                                                                            setFormQuestions(updated);
+                                                                        }}
+                                                                        className="w-3.5 h-3.5 text-indigo-650 focus:ring-indigo-500 bg-slate-950 border-slate-800"
+                                                                    />
+                                                                    <span className="text-[10px] text-slate-400 font-medium">Mark Correct</span>
+                                                                </label>
+                                                            </div>
                                                             <input
                                                                 type="text"
                                                                 value={option}
                                                                 onChange={e => handleOptionTextChange(qIdx, oIdx, e.target.value)}
                                                                 placeholder={`Choice ${oIdx + 1}`}
-                                                                className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl px-4 py-2 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm"
+                                                                className="w-full bg-slate-950 border border-slate-800/80 focus:border-indigo-500 rounded-lg px-3 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none text-sm"
                                                                 required
                                                             />
                                                         </div>
@@ -527,12 +611,23 @@ export default function DashboardPage() {
                                         ))}
                                     </div>
 
-                                    <button
-                                        type="submit"
-                                        className="inline-flex items-center justify-center w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:shadow-indigo-500/35 transition duration-200 cursor-pointer"
-                                    >
-                                        Save Exam Module
-                                    </button>
+                                    <div className="flex gap-4 pt-2">
+                                        {editingExamId && (
+                                            <button
+                                                type="button"
+                                                onClick={handleCancelEdit}
+                                                className="flex-1 py-3.5 bg-slate-900 border border-slate-850 hover:bg-slate-850 text-slate-300 rounded-xl font-bold transition duration-200 cursor-pointer text-center"
+                                            >
+                                                Cancel Edit
+                                            </button>
+                                        )}
+                                        <button
+                                            type="submit"
+                                            className="inline-flex items-center justify-center flex-2 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 hover:shadow-indigo-500/35 transition duration-200 cursor-pointer"
+                                        >
+                                            {editingExamId ? 'Save Changes' : 'Save Exam Module'}
+                                        </button>
+                                    </div>
                                 </form>
                             </div>
                         )}
