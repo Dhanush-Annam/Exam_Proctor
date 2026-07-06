@@ -1,5 +1,7 @@
 const express = require('express');
 const Exam    = require('../models/Exam');
+const Submission = require('../models/Submission');
+const Flag       = require('../models/Flag');
 const auth    = require('../middleware/auth');
 const router  = express.Router();
 
@@ -76,6 +78,68 @@ router.get('/:id', auth, async (req, res) => {
         if (!exam)
             return res.status(404).json({ error: 'Exam not found' });
         res.json(exam);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Submit exam
+router.post('/:id/submit', auth, async (req, res) => {
+    try {
+        const { answers, session_id } = req.body;
+
+        const exam = await Exam.findByPk(req.params.id);
+        if (!exam)
+            return res.status(404).json({ error: 'Exam not found' });
+
+        // Auto grade
+        const questions      = exam.questions;
+        let correct_answers  = 0;
+
+        questions.forEach((q, i) => {
+            if (answers[i] && answers[i] === q.answer) {
+                correct_answers++;
+            }
+        });
+
+        const score = (correct_answers / questions.length) * 100;
+
+        // Count flags for this session
+        const total_flags = await Flag.count({ where: { session_id } });
+
+        const submission = await Submission.create({
+            student_id      : req.user.id,
+            exam_id         : req.params.id,
+            session_id,
+            answers,
+            score,
+            total_questions : questions.length,
+            correct_answers,
+            total_flags
+        });
+
+        res.json({
+            score,
+            correct_answers,
+            total_questions : questions.length,
+            total_flags,
+            submission_id   : submission.id
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get all submissions for an exam (examiner)
+router.get('/:id/submissions', auth, async (req, res) => {
+    try {
+        if (req.user.role !== 'examiner')
+            return res.status(403).json({ error: 'Examiners only' });
+
+        const submissions = await Submission.findAll({
+            where: { exam_id: req.params.id }
+        });
+        res.json(submissions);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

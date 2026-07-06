@@ -50,6 +50,22 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
     }
 });
 
+router.post('/tab-switch', auth, async (req, res) => {
+    try {
+        const { session_id, exam_id } = req.body;
+        await Flag.create({
+            session_id,
+            student_id : req.user.id,
+            exam_id,
+            alert_type : 'TAB_SWITCH',
+            detail     : 'Student switched tabs during exam'
+        });
+        res.json({ logged: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get all flagged proctoring sessions (examiner only)
 router.get('/sessions', auth, async (req, res) => {
     try {
@@ -111,6 +127,25 @@ router.get('/flags/:session_id', auth, async (req, res) => {
             where: { session_id: req.params.session_id }
         });
         res.json(flags);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.post('/log-event', auth, async (req, res) => {
+    try {
+        const { session_id, exam_id, alert_type, detail } = req.body;
+        if (!session_id || !exam_id || !alert_type) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+        await Flag.create({
+            session_id,
+            student_id : req.user.id,
+            exam_id,
+            alert_type,
+            detail     : detail || ''
+        });
+        res.json({ logged: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
