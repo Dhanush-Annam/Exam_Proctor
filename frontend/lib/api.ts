@@ -42,3 +42,12 @@ export const getFlags = (session_id: string) =>
 
 export const getProctorSessions = () =>
     API.get('/api/proctor/sessions');
+
+// ── Submissions ──────────────────────────────────────────
+export const submitExam = (
+    exam_id   : string,
+    data      : { answers: Record<number, string>, session_id: string }
+) => API.post(`/api/exams/${exam_id}/submit`, data);
+
+export const getSubmissions = (exam_id: string) =>
+    API.get(`/api/exams/${exam_id}/submissions`);
