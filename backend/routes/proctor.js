@@ -8,6 +8,110 @@ const User    = require('../models/User');
 const Exam    = require('../models/Exam');
 const router  = express.Router();
 
+// Heuristic flag-level AI verdict engine
+function getFlagAiVerdict(alertType, detail = '') {
+    const type = (alertType || '').toUpperCase();
+    
+    // Default low-risk unless matched
+    let ai_verdict = 'LOW_RISK';
+    let ai_reason = 'AI detected a minor event during monitoring.';
+
+    if (type === 'TAB_SWITCH') {
+        ai_verdict = 'SUSPICIOUS';
+        ai_reason = 'Student switched browser tab or minimized window, indicating potential navigation away from the exam.';
+    } else if (type === 'WINDOW_BLUR') {
+        ai_verdict = 'SUSPICIOUS';
+        ai_reason = 'Browser window lost focus. The student clicked outside the exam interface or opened an overlay.';
+    } else if (type === 'FULLSCREEN_EXIT') {
+        ai_verdict = 'HIGH_RISK';
+        ai_reason = 'Student exited fullscreen mode, violating the exam configuration and integrity guidelines.';
+    } else if (type === 'DEVTOOLS_OPENED') {
+        ai_verdict = 'HIGH_RISK';
+        ai_reason = 'Developer Tools opened. The student may be inspecting variables, injecting code, or bypassing checks.';
+    } else if (type === 'SCREENSHARE_STOPPED') {
+        ai_verdict = 'HIGH_RISK';
+        ai_reason = 'Screen sharing was stopped or terminated by the student, preventing full screen activity monitoring.';
+    } else if (type === 'SCREENSHARE_WINDOW_SHARED') {
+        ai_verdict = 'HIGH_RISK';
+        ai_reason = 'Student attempted to share a single window or tab instead of the required entire desktop screen.';
+    } else if (type === 'META_KEY_PRESS') {
+        ai_verdict = 'SUSPICIOUS';
+        ai_reason = 'Windows/Command key pressed, which may launch external search/system shortcuts.';
+    } else if (type === 'CLIPBOARD_ACTION') {
+        ai_verdict = 'SUSPICIOUS';
+        ai_reason = 'Copy, cut, or paste keyboard actions were blocked, violating response independence rules.';
+    } else if (type === 'SHORTCUT_BLOCKED') {
+        ai_verdict = 'SUSPICIOUS';
+        ai_reason = 'Blocked system shortcut or hotkey combination (e.g. Save, Print, etc.).';
+    } else if (type === 'EYES_CLOSED') {
+        ai_verdict = 'LOW_RISK';
+        ai_reason = 'Eyelid closure or prolonged blink detected by webcam facial analysis.';
+    } else if (type.startsWith('GAZE_')) {
+        const direction = type.split('_')[1] || 'SIDEWAYS';
+        ai_verdict = 'SUSPICIOUS';
+        ai_reason = `Student gaze detected looking ${direction.toLowerCase()} away from the center of the screen, indicating potential look-away towards external materials.`;
+    } else if (type === 'NO_FACE') {
+        ai_verdict = 'HIGH_RISK';
+        ai_reason = 'No face detected in webcam feed. Student might have left the desk, blocked the camera, or obscured their face.';
+    } else if (type === 'MULTIPLE_FACES') {
+        ai_verdict = 'HIGH_RISK';
+        ai_reason = 'Multiple faces detected in webcam feed. Another person is present or looking at the exam screen.';
+    }
+
+    return { ai_verdict, ai_reason };
+}
+
+// Heuristic session-level AI verdict aggregator
+function calculateSessionVerdict(flags) {
+    let highRiskCount = 0;
+    let suspiciousCount = 0;
+    let lowRiskCount = 0;
+    let tabSwitches = 0;
+    let gazeCount = 0;
+
+    for (const flag of flags) {
+        const verdict = flag.ai_verdict;
+        const type = flag.alert_type;
+
+        if (verdict === 'HIGH_RISK') {
+            highRiskCount++;
+        } else if (verdict === 'SUSPICIOUS') {
+            suspiciousCount++;
+            if (type === 'TAB_SWITCH' || type === 'WINDOW_BLUR') tabSwitches++;
+            if (type.startsWith('GAZE_')) gazeCount++;
+        } else {
+            lowRiskCount++;
+        }
+    }
+
+    let verdict = 'NORMAL';
+    let reason = 'No major anomalies detected. Student behavior appears consistent with test guidelines.';
+
+    if (highRiskCount > 0 || tabSwitches >= 3 || flags.length >= 6) {
+        verdict = 'CRITICAL';
+        const explanations = [];
+        if (highRiskCount > 0) explanations.push(`${highRiskCount} high-risk trigger(s) (e.g., webcam face loss or DevTools)`);
+        if (tabSwitches >= 3) explanations.push(`${tabSwitches} browser tab transitions/focus losses`);
+        if (flags.length >= 6) explanations.push(`unusually high frequency of alerts (${flags.length} total events)`);
+        
+        reason = `CRITICAL RISK: Potential integrity compromise. Detected ${explanations.join(', and ')}. Manual audit recommended.`;
+    } else if (suspiciousCount > 0 || flags.length >= 2) {
+        verdict = 'SUSPICIOUS';
+        const explanations = [];
+        if (tabSwitches > 0) explanations.push(`switched browser focus ${tabSwitches} time(s)`);
+        if (gazeCount > 0) explanations.push(`looked away from the screen ${gazeCount} time(s)`);
+        if (flags.length >= 2 && explanations.length === 0) explanations.push(`multiple minor alerts (${flags.length} alerts)`);
+
+        reason = `SUSPICIOUS: Minor anomalies observed. Student ${explanations.join(' and ')}. Check the timeline for details.`;
+    } else if (flags.length === 1) {
+        verdict = 'NORMAL';
+        const label = flags[0].alert_type.replace(/_/g, ' ').toLowerCase();
+        reason = `NORMAL: Clear overall behavior with a single minor alert (${label}).`;
+    }
+
+    return { verdict, reason };
+}
+
 router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
     try {
         const { session_id, exam_id } = req.body;
@@ -33,14 +137,20 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
 
         // Save flags to PostgreSQL if any
         if (result.alerts && result.alerts.length > 0 && result.flag_saved) {
+            const alertType = result.alerts[0];
+            const detailStr = `gaze=${result.gaze} signal=${result.signal}`;
+            const { ai_verdict, ai_reason } = getFlagAiVerdict(alertType, detailStr);
+
             await Flag.create({
                 session_id,
                 student_id : req.user.id,
                 exam_id,
-                alert_type : result.alerts[0],
-                detail     : `gaze=${result.gaze} signal=${result.signal}`,
+                alert_type : alertType,
+                detail     : detailStr,
                 ear_value  : result.ear,
-                yaw_degrees: result.yaw
+                yaw_degrees: result.yaw,
+                ai_verdict,
+                ai_reason
             });
         }
 
@@ -53,12 +163,16 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
 router.post('/tab-switch', auth, async (req, res) => {
     try {
         const { session_id, exam_id } = req.body;
+        const { ai_verdict, ai_reason } = getFlagAiVerdict('TAB_SWITCH');
+
         await Flag.create({
             session_id,
             student_id : req.user.id,
             exam_id,
             alert_type : 'TAB_SWITCH',
-            detail     : 'Student switched tabs during exam'
+            detail     : 'Student switched tabs during exam',
+            ai_verdict,
+            ai_reason
         });
         res.json({ logged: true });
     } catch (err) {
@@ -91,6 +205,16 @@ router.get('/sessions', auth, async (req, res) => {
         // Group by session_id
         const sessionsMap = {};
         for (const flag of flags) {
+            // Dynamic backfill for existing DB records if they are null
+            if (!flag.ai_verdict || !flag.ai_reason) {
+                const calculated = getFlagAiVerdict(flag.alert_type, flag.detail);
+                flag.ai_verdict = flag.ai_verdict || calculated.ai_verdict;
+                flag.ai_reason = flag.ai_reason || calculated.ai_reason;
+                
+                // Save backfilled value to DB asynchronously
+                flag.save().catch(err => console.error("Error auto-saving backfilled flag verdict:", err));
+            }
+
             const sId = flag.session_id;
             if (!sessionsMap[sId]) {
                 sessionsMap[sId] = {
@@ -111,6 +235,14 @@ router.get('/sessions', auth, async (req, res) => {
             }
             sessionsMap[sId].flagsCount += 1;
             sessionsMap[sId].flags.push(flag);
+        }
+
+        // Calculate session level verdicts
+        for (const sId in sessionsMap) {
+            const session = sessionsMap[sId];
+            const verdictInfo = calculateSessionVerdict(session.flags);
+            session.verdict = verdictInfo.verdict;
+            session.reason = verdictInfo.reason;
         }
 
         const sessionsList = Object.values(sessionsMap);
@@ -138,12 +270,16 @@ router.post('/log-event', auth, async (req, res) => {
         if (!session_id || !exam_id || !alert_type) {
             return res.status(400).json({ error: 'Missing required parameters' });
         }
+        const { ai_verdict, ai_reason } = getFlagAiVerdict(alert_type, detail);
+
         await Flag.create({
             session_id,
             student_id : req.user.id,
             exam_id,
             alert_type,
-            detail     : detail || ''
+            detail     : detail || '',
+            ai_verdict,
+            ai_reason
         });
         res.json({ logged: true });
     } catch (err) {

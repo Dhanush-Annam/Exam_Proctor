@@ -31,6 +31,8 @@ interface ProctorSession {
     flagsCount: number;
     flags: any[];
     latestFlagAt: string;
+    verdict?: 'CRITICAL' | 'SUSPICIOUS' | 'NORMAL';
+    reason?: string;
 }
 
 export default function DashboardPage() {
@@ -44,6 +46,42 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+
+    // Proctor Feed Filter states
+    const [searchTerm, setSearchTerm] = useState('');
+    const [verdictFilter, setVerdictFilter] = useState<'ALL' | 'CRITICAL' | 'SUSPICIOUS' | 'NORMAL'>('ALL');
+
+    // Calculate Stats from sessions
+    const totalSessions = sessions.length;
+    const criticalSessionsCount = sessions.filter(s => s.verdict === 'CRITICAL').length;
+    const suspiciousSessionsCount = sessions.filter(s => s.verdict === 'SUSPICIOUS').length;
+    const normalSessionsCount = sessions.filter(s => s.verdict === 'NORMAL' || !s.verdict).length;
+
+    const filteredSessions = sessions.filter(session => {
+        // Filter by verdict
+        if (verdictFilter !== 'ALL') {
+            const currentVerdict = session.verdict || 'NORMAL';
+            if (currentVerdict !== verdictFilter) return false;
+        }
+
+        // Filter by search text
+        if (searchTerm.trim() !== '') {
+            const search = searchTerm.toLowerCase();
+            const studentName = (session.student?.name || '').toLowerCase();
+            const studentEmail = (session.student?.email || '').toLowerCase();
+            const examTitle = (session.exam?.title || '').toLowerCase();
+            const sId = (session.session_id || '').toLowerCase();
+
+            return (
+                studentName.includes(search) ||
+                studentEmail.includes(search) ||
+                examTitle.includes(search) ||
+                sId.includes(search)
+            );
+        }
+
+        return true;
+    });
 
     // Create Exam Form state
     const [examTitle, setExamTitle] = useState('');
@@ -515,53 +553,160 @@ export default function DashboardPage() {
                                     </button>
                                 </div>
 
-                                {sessions.length === 0 ? (
+                                {/* KPI Stats Grid */}
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                    <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-slate-700 transition duration-300">
+                                        <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Flagged</span>
+                                        <div className="flex justify-between items-baseline mt-2">
+                                            <span className="text-2xl font-black text-white">{totalSessions}</span>
+                                            <span className="text-[10px] text-slate-500 font-medium">Sessions</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-red-950/20 border border-red-900/30 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-red-900/50 transition duration-300 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/5 rounded-full blur-xl group-hover:bg-red-500/10 transition duration-300"></div>
+                                        <span className="text-red-400 text-xs font-semibold uppercase tracking-wider">Critical Risk</span>
+                                        <div className="flex justify-between items-baseline mt-2">
+                                            <span className="text-2xl font-black text-red-400">{criticalSessionsCount}</span>
+                                            <span className="text-[10px] text-red-500/80 font-medium font-mono">Immediate Action</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-amber-950/20 border border-amber-900/30 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-amber-900/50 transition duration-300 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full blur-xl group-hover:bg-amber-500/10 transition duration-300"></div>
+                                        <span className="text-amber-400 text-xs font-semibold uppercase tracking-wider">Suspicious</span>
+                                        <div className="flex justify-between items-baseline mt-2">
+                                            <span className="text-2xl font-black text-amber-400">{suspiciousSessionsCount}</span>
+                                            <span className="text-[10px] text-amber-500/80 font-medium font-mono">Review Timeline</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-emerald-950/20 border border-emerald-900/30 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-emerald-900/50 transition duration-300 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/10 transition duration-300"></div>
+                                        <span className="text-emerald-400 text-xs font-semibold uppercase tracking-wider">Normal / Clean</span>
+                                        <div className="flex justify-between items-baseline mt-2">
+                                            <span className="text-2xl font-black text-emerald-400">{normalSessionsCount}</span>
+                                            <span className="text-[10px] text-emerald-500 font-medium font-mono">Low/No Alerts</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Filters and Search Toolbar */}
+                                <div className="flex flex-col sm:flex-row gap-3 mb-6 bg-slate-900/30 border border-slate-800 p-3 rounded-2xl backdrop-blur-sm">
+                                    <div className="relative flex-1">
+                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                            </svg>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={searchTerm}
+                                            onChange={e => setSearchTerm(e.target.value)}
+                                            placeholder="Search student, exam, session ID..."
+                                            className="w-full bg-slate-950 border border-slate-800/80 focus:border-indigo-500 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+                                        {(['ALL', 'CRITICAL', 'SUSPICIOUS', 'NORMAL'] as const).map(verdict => (
+                                            <button
+                                                key={verdict}
+                                                onClick={() => setVerdictFilter(verdict)}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                                                    verdictFilter === verdict
+                                                        ? verdict === 'CRITICAL'
+                                                            ? 'bg-red-500 text-white shadow-lg shadow-red-500/20'
+                                                            : verdict === 'SUSPICIOUS'
+                                                            ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                                                            : verdict === 'NORMAL'
+                                                            ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+                                                            : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                                        : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/80'
+                                                }`}
+                                            >
+                                                {verdict === 'ALL' ? 'All' : verdict}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {filteredSessions.length === 0 ? (
                                     <div className="bg-slate-900/30 border border-slate-800 p-12 text-center rounded-3xl backdrop-blur-sm">
                                         <svg className="w-10 h-10 text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                         </svg>
-                                        <h3 className="font-semibold text-slate-300">No Flags Logged</h3>
-                                        <p className="text-slate-500 text-sm mt-1">Students are taking exams without alerts. Keep monitoring.</p>
+                                        <h3 className="font-semibold text-slate-300">No sessions match search / filter</h3>
+                                        <p className="text-slate-500 text-sm mt-1">Try modifying your query or selecting another verdict filter.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
-                                        {sessions.map((session) => (
-                                            <div
-                                                key={session.session_id}
-                                                onClick={() => setSelectedSession(session)}
-                                                className="bg-slate-900/40 border border-slate-800 p-5 rounded-2xl hover:border-slate-700/80 hover:bg-slate-900/60 transition duration-250 cursor-pointer flex justify-between items-center gap-4 group"
-                                            >
-                                                <div className="overflow-hidden">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="font-bold text-slate-200 group-hover:text-white transition">{session.student.name}</span>
-                                                        <span className="text-[10px] font-mono text-slate-500 truncate hidden sm:inline">({session.student.email})</span>
-                                                    </div>
-                                                    <p className="text-xs text-slate-400 mt-1.5">Exam: <span className="text-indigo-400 font-semibold">{session.exam.title}</span></p>
-                                                    <div className="text-[10px] text-slate-500 mt-1">Session: <span className="font-mono">{session.session_id}</span></div>
-                                                </div>
+                                        {filteredSessions.map((session) => {
+                                            const currentVerdict = session.verdict || 'NORMAL';
+                                            const verdictColors = {
+                                                CRITICAL: {
+                                                    bg: 'bg-red-500/5 hover:bg-red-500/10 transition',
+                                                    badge: 'bg-red-500/10 border-red-500/30 text-red-400',
+                                                    border: 'border-l-4 border-l-red-500 border-t border-r border-b border-slate-800/80'
+                                                },
+                                                SUSPICIOUS: {
+                                                    bg: 'bg-amber-500/5 hover:bg-amber-500/10 transition',
+                                                    badge: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+                                                    border: 'border-l-4 border-l-amber-500 border-t border-r border-b border-slate-800/80'
+                                                },
+                                                NORMAL: {
+                                                    bg: 'bg-slate-900/30 hover:bg-slate-900/50 transition',
+                                                    badge: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+                                                    border: 'border-l-4 border-l-emerald-500/70 border-t border-r border-b border-slate-800/80'
+                                                }
+                                            };
+                                            const style = verdictColors[currentVerdict] || verdictColors.NORMAL;
 
-                                                <div className="flex items-center gap-4 shrink-0">
-                                                    <div className="text-right">
-                                                        <span className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${
-                                                            session.flagsCount >= 3
-                                                                ? 'bg-red-500/10 border-red-500/20 text-red-400 animate-pulse'
-                                                                : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
-                                                        }`}>
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                                                            {session.flagsCount} {session.flagsCount === 1 ? 'Alert' : 'Alerts'}
-                                                        </span>
-                                                        <div className="text-[9px] text-slate-500 mt-1">
-                                                            {new Date(session.latestFlagAt).toLocaleTimeString()}
+                                            return (
+                                                <div
+                                                    key={session.session_id}
+                                                    onClick={() => setSelectedSession(session)}
+                                                    className={`p-5 rounded-2xl cursor-pointer flex flex-col md:flex-row justify-between md:items-center gap-4 group ${style.bg} ${style.border}`}
+                                                >
+                                                    <div className="overflow-hidden flex-1">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="font-bold text-slate-100 group-hover:text-indigo-400 transition">{session.student.name}</span>
+                                                            <span className="text-[10px] font-mono text-slate-500 truncate">({session.student.email})</span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-400 mt-1.5">Exam: <span className="text-slate-300 font-semibold">{session.exam.title}</span></p>
+                                                        
+                                                        <div className="text-xs text-slate-400 mt-2 bg-slate-950/40 border border-slate-800/40 p-2.5 rounded-xl line-clamp-2">
+                                                            <span className="font-semibold text-indigo-400 uppercase text-[9px] tracking-wide block mb-0.5">AI Summary</span>
+                                                            {session.reason || 'Normal test sessions and activity flags logged.'}
                                                         </div>
                                                     </div>
-                                                    <div className="w-8 h-8 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-105 transition duration-200">
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                                                        </svg>
+
+                                                    <div className="flex items-center justify-between md:justify-end gap-4 shrink-0 mt-3 md:mt-0 border-t border-slate-800/40 md:border-t-0 pt-3 md:pt-0">
+                                                        <div className="text-left md:text-right">
+                                                            <div className="flex items-center md:justify-end gap-2">
+                                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider uppercase border ${style.badge}`}>
+                                                                    AI: {currentVerdict}
+                                                                </span>
+                                                                <span className="bg-slate-950 border border-slate-800 text-slate-350 text-xs px-2 py-0.5 rounded-md font-mono">
+                                                                    {session.flagsCount} {session.flagsCount === 1 ? 'alert' : 'alerts'}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1 md:justify-end">
+                                                                <svg className="w-3.5 h-3.5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                </svg>
+                                                                {new Date(session.latestFlagAt).toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-8 h-8 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-105 transition duration-200">
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
@@ -577,11 +722,11 @@ export default function DashboardPage() {
                     <div className="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-3xl p-5 sm:p-6 md:p-8 relative max-h-[85vh] flex flex-col shadow-2xl">
                         
                         {/* Modal Header */}
-                        <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-6">
+                        <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-5">
                             <div>
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <h2 className="text-2xl font-bold text-white leading-tight">{selectedSession.student.name}</h2>
-                                    <span className="text-xs font-semibold text-slate-500">({selectedSession.student.email})</span>
+                                    <span className="text-xs font-semibold text-slate-500 font-mono">({selectedSession.student.email})</span>
                                 </div>
                                 <p className="text-sm text-slate-400 mt-1">Attempting: <span className="text-indigo-400 font-semibold">{selectedSession.exam.title}</span></p>
                             </div>
@@ -595,55 +740,137 @@ export default function DashboardPage() {
                             </button>
                         </div>
 
-                        {/* Modal Body (Scrollable Timeline) */}
+                        {/* Modal Body */}
                         <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
-                            <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs">
+                            
+                            {/* Glassmorphic AI Verdict Header Card */}
+                            {(() => {
+                                const currentVerdict = selectedSession.verdict || 'NORMAL';
+                                const verdictStyleMap = {
+                                    CRITICAL: {
+                                        bg: 'bg-red-500/10 border-red-500/20 text-red-200',
+                                        badge: 'bg-red-500/20 border-red-500/30 text-red-400',
+                                        icon: '⚠️',
+                                        title: 'Critical Risk Flagged'
+                                    },
+                                    SUSPICIOUS: {
+                                        bg: 'bg-amber-500/10 border-amber-500/20 text-amber-200',
+                                        badge: 'bg-amber-500/20 border-amber-500/30 text-amber-400',
+                                        icon: '🔍',
+                                        title: 'Suspicious Activity Detected'
+                                    },
+                                    NORMAL: {
+                                        bg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200',
+                                        badge: 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400',
+                                        icon: '✅',
+                                        title: 'Clean / Low Risk'
+                                    }
+                                };
+                                const vStyle = verdictStyleMap[currentVerdict] || verdictStyleMap.NORMAL;
+
+                                return (
+                                    <div className={`border p-5 rounded-2xl shadow-lg relative overflow-hidden ${vStyle.bg}`}>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <span className="text-xl">{vStyle.icon}</span>
+                                            <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-100">{vStyle.title}</h3>
+                                            <span className={`ml-auto px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${vStyle.badge}`}>
+                                                {currentVerdict}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs leading-relaxed text-slate-200 mt-2 font-medium">
+                                            {selectedSession.reason || 'No alerts triggered. The student is behaving within constraints.'}
+                                        </p>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Session Identification Info */}
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs">
                                 <div>
-                                    <span className="text-slate-500 font-bold block">SESSION IDENTIFIER</span>
+                                    <span className="text-slate-500 font-bold block mb-0.5 uppercase tracking-wider text-[9px]">SESSION IDENTIFIER</span>
                                     <span className="font-mono text-indigo-400 font-semibold">{selectedSession.session_id}</span>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-slate-500 font-bold block">TOTAL FLAGS</span>
-                                    <span className={`font-bold ${selectedSession.flagsCount >= 3 ? 'text-red-400' : 'text-yellow-400'}`}>{selectedSession.flagsCount} alerts recorded</span>
+                                <div className="text-left sm:text-right border-t border-slate-800/40 sm:border-t-0 pt-2 sm:pt-0">
+                                    <span className="text-slate-500 font-bold block mb-0.5 uppercase tracking-wider text-[9px]">TIMELINE SUMMARY</span>
+                                    <span className="font-bold text-slate-300">{selectedSession.flagsCount} alerts logged</span>
                                 </div>
                             </div>
 
-                            <div className="space-y-3">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Alert Timeline</h4>
-                                {selectedSession.flags.map((flag, idx) => (
-                                    <div
-                                        key={flag.id || idx}
-                                        className="bg-slate-950/60 border border-slate-800/80 p-4 rounded-2xl flex gap-3.5 items-start text-xs hover:border-slate-800 transition duration-200"
-                                    >
-                                        <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center shrink-0">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                            </svg>
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex justify-between items-center font-bold">
-                                                <span className="text-slate-200 text-sm uppercase">{flag.alert_type}</span>
-                                                <span className="text-slate-500 font-medium font-mono">{new Date(flag.createdAt).toLocaleTimeString()}</span>
+                            {/* Timeline section */}
+                            <div className="space-y-4 pt-2">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Flag Alert Timeline</h4>
+                                <div className="relative pl-4 border-l border-slate-800 space-y-4">
+                                    {selectedSession.flags.map((flag, idx) => {
+                                        const flagVerdict = flag.ai_verdict || 'LOW_RISK';
+                                        
+                                        const flagSeverityStyle = {
+                                            HIGH_RISK: {
+                                                bullet: 'bg-red-500 border-red-950 shadow-red-500/20',
+                                                card: 'bg-red-950/10 border-red-900/30 text-red-200',
+                                                badge: 'bg-red-500/10 border-red-500/20 text-red-400'
+                                            },
+                                            SUSPICIOUS: {
+                                                bullet: 'bg-amber-500 border-amber-950 shadow-amber-500/20',
+                                                card: 'bg-amber-950/10 border-amber-900/30 text-amber-200',
+                                                badge: 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                                            },
+                                            LOW_RISK: {
+                                                bullet: 'bg-emerald-500 border-emerald-950 shadow-emerald-500/20',
+                                                card: 'bg-slate-900/40 border-slate-800 text-slate-300',
+                                                badge: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                            }
+                                        };
+                                        const fStyle = flagSeverityStyle[flagVerdict as 'HIGH_RISK'|'SUSPICIOUS'|'LOW_RISK'] || flagSeverityStyle.LOW_RISK;
+
+                                        return (
+                                            <div key={flag.id || idx} className="relative group">
+                                                {/* Timeline Bullet Point */}
+                                                <div className={`absolute left-[-22.5px] top-1.5 w-3 h-3 rounded-full border-2 shadow-sm transition duration-200 group-hover:scale-125 ${fStyle.bullet}`}></div>
+                                                
+                                                {/* Timeline Card */}
+                                                <div className={`p-4 rounded-xl border flex flex-col gap-2.5 transition duration-200 hover:border-slate-700/80 ${fStyle.card}`}>
+                                                    <div className="flex justify-between items-center flex-wrap gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-extrabold text-sm uppercase tracking-wide text-slate-200">{flag.alert_type.replace(/_/g, ' ')}</span>
+                                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${fStyle.badge}`}>
+                                                                {flagVerdict}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-slate-500 font-mono text-[10px]">{new Date(flag.createdAt || flag.timestamp).toLocaleTimeString()}</span>
+                                                    </div>
+
+                                                    <p className="text-xs text-slate-300 leading-relaxed">
+                                                        {flag.ai_reason || flag.detail || 'suspicious activity logs'}
+                                                    </p>
+
+                                                    {/* Details info */}
+                                                    {flag.detail && flag.detail !== 'Student switched tabs during exam' && (
+                                                        <div className="text-[10px] text-slate-500 font-mono bg-slate-950/40 p-2 rounded-lg border border-slate-850 mt-1">
+                                                            <span className="font-bold text-slate-400">Technical Details:</span> {flag.detail}
+                                                        </div>
+                                                    )}
+
+                                                    {/* AI Metrics values */}
+                                                    {(flag.ear_value !== null || flag.yaw_degrees !== null) && (
+                                                        <div className="flex gap-4 text-[10px] text-slate-500 font-mono">
+                                                            {flag.ear_value !== null && (
+                                                                <div>EAR (Eye Aspect Ratio): <span className="text-slate-300">{Number(flag.ear_value).toFixed(3)}</span></div>
+                                                            )}
+                                                            {flag.yaw_degrees !== null && (
+                                                                <div>Head Yaw Angle: <span className="text-slate-300">{Number(flag.yaw_degrees).toFixed(1)}°</span></div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <p className="text-slate-400 mt-1.5 leading-relaxed">{flag.detail || 'Flag alert details'}</p>
-                                            
-                                            {/* AI Metrics values */}
-                                            <div className="flex gap-4 mt-3 text-[10px] text-slate-500 font-mono">
-                                                {flag.ear_value !== null && (
-                                                    <div>EAR: <span className="text-slate-300">{flag.ear_value.toFixed(4)}</span></div>
-                                                )}
-                                                {flag.yaw_degrees !== null && (
-                                                    <div>Head Yaw: <span className="text-slate-300">{flag.yaw_degrees.toFixed(1)}°</span></div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="border-t border-slate-800 pt-5 mt-6 flex justify-end">
+                        <div className="border-t border-slate-800 pt-5 mt-5 flex justify-end">
                             <button
                                 onClick={() => setSelectedSession(null)}
                                 className="inline-flex items-center justify-center px-6 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-sm font-semibold rounded-xl transition duration-200 cursor-pointer"
