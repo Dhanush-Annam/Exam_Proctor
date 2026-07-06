@@ -9,6 +9,7 @@ const { initSocket } = require('./socket');
 require('./models/User');
 require('./models/Exam');
 require('./models/Flag');
+require('./models/Submission');
 
 // Import routes
 const authRoutes    = require('./routes/auth');
