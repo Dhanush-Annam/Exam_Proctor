@@ -30,6 +30,45 @@ router.get('/', auth, async (req, res) => {
     }
 });
 
+// Get all exams created by the examiner
+router.get('/examiner', auth, async (req, res) => {
+    try {
+        if (req.user.role !== 'examiner')
+            return res.status(403).json({ error: 'Only examiners can view examiner exams' });
+
+        const exams = await Exam.findAll({ where: { created_by: req.user.id } });
+        res.json(exams);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update exam status (examiner only)
+router.patch('/:id/status', auth, async (req, res) => {
+    try {
+        if (req.user.role !== 'examiner')
+            return res.status(403).json({ error: 'Only examiners can update exam status' });
+
+        const { status } = req.body;
+        if (!['draft', 'active', 'closed'].includes(status)) {
+            return res.status(400).json({ error: 'Invalid status' });
+        }
+
+        const exam = await Exam.findByPk(req.params.id);
+        if (!exam)
+            return res.status(404).json({ error: 'Exam not found' });
+
+        if (exam.created_by !== req.user.id)
+            return res.status(403).json({ error: 'Unauthorized to update this exam' });
+
+        exam.status = status;
+        await exam.save();
+        res.json(exam);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get single exam
 router.get('/:id', auth, async (req, res) => {
     try {

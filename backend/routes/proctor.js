@@ -4,6 +4,8 @@ const FormData = require('form-data');
 const auth    = require('../middleware/auth');
 const upload  = require('../middleware/upload');
 const Flag    = require('../models/Flag');
+const User    = require('../models/User');
+const Exam    = require('../models/Exam');
 const router  = express.Router();
 
 router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
@@ -43,6 +45,60 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
         }
 
         res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get all flagged proctoring sessions (examiner only)
+router.get('/sessions', auth, async (req, res) => {
+    try {
+        if (req.user.role !== 'examiner')
+            return res.status(403).json({ error: 'Only examiners can view proctoring sessions' });
+
+        // Associate if not already done
+        if (!Flag.associations.student) {
+            Flag.belongsTo(User, { foreignKey: 'student_id', as: 'student' });
+        }
+        if (!Flag.associations.exam) {
+            Flag.belongsTo(Exam, { foreignKey: 'exam_id', as: 'exam' });
+        }
+
+        const flags = await Flag.findAll({
+            include: [
+                { model: User, as: 'student', attributes: ['id', 'name', 'email'] },
+                { model: Exam, as: 'exam', attributes: ['id', 'title'] }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        // Group by session_id
+        const sessionsMap = {};
+        for (const flag of flags) {
+            const sId = flag.session_id;
+            if (!sessionsMap[sId]) {
+                sessionsMap[sId] = {
+                    session_id: sId,
+                    student: flag.student ? {
+                        id: flag.student.id,
+                        name: flag.student.name,
+                        email: flag.student.email
+                    } : { id: flag.student_id, name: 'Unknown Student', email: '' },
+                    exam: flag.exam ? {
+                        id: flag.exam.id,
+                        title: flag.exam.title
+                    } : { id: flag.exam_id, title: 'Unknown Exam' },
+                    flagsCount: 0,
+                    flags: [],
+                    latestFlagAt: flag.createdAt
+                };
+            }
+            sessionsMap[sId].flagsCount += 1;
+            sessionsMap[sId].flags.push(flag);
+        }
+
+        const sessionsList = Object.values(sessionsMap);
+        res.json(sessionsList);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
