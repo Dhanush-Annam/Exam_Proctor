@@ -35,13 +35,16 @@ router.get('/', auth, async (req, res) => {
     }
 });
 
-// Get all exams created by the examiner
-router.get('/examiner', auth, async (req, res) => {
+// Get exams created by this examiner
+router.get('/mine', auth, async (req, res) => {
     try {
         if (req.user.role !== 'examiner')
-            return res.status(403).json({ error: 'Only examiners can view examiner exams' });
+            return res.status(403).json({ error: 'Examiners only' });
 
-        const exams = await Exam.findAll({ where: { created_by: req.user.id } });
+        const exams = await Exam.findAll({
+            where: { created_by: req.user.id },
+            order: [['createdAt', 'DESC']]
+        });
         res.json(exams);
     } catch (err) {
         res.status(500).json({ error: err.message });

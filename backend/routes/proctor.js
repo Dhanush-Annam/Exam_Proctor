@@ -6,6 +6,8 @@ const upload  = require('../middleware/upload');
 const Flag    = require('../models/Flag');
 const User    = require('../models/User');
 const Exam    = require('../models/Exam');
+const sequelize  = require('../models/index');
+const { Op }     = require('sequelize');
 const router  = express.Router();
 
 // Heuristic flag-level AI verdict engine
@@ -180,79 +182,71 @@ router.post('/tab-switch', auth, async (req, res) => {
     }
 });
 
-// Get all flagged proctoring sessions (examiner only)
+// Get all proctoring sessions for examiner
 router.get('/sessions', auth, async (req, res) => {
     try {
         if (req.user.role !== 'examiner')
-            return res.status(403).json({ error: 'Only examiners can view proctoring sessions' });
+            return res.status(403).json({ error: 'Examiners only' });
 
-        // Associate if not already done
-        if (!Flag.associations.student) {
-            Flag.belongsTo(User, { foreignKey: 'student_id', as: 'student' });
-        }
-        if (!Flag.associations.exam) {
-            Flag.belongsTo(Exam, { foreignKey: 'exam_id', as: 'exam' });
-        }
-
+        // Get all flags grouped by session
         const flags = await Flag.findAll({
-            include: [
-                { model: User, as: 'student', attributes: ['id', 'name', 'email'] },
-                { 
-                    model: Exam, 
-                    as: 'exam', 
-                    attributes: ['id', 'title', 'created_by'],
-                    where: { created_by: req.user.id },
-                    required: true
-                }
-            ],
             order: [['createdAt', 'DESC']]
         });
 
         // Group by session_id
-        const sessionsMap = {};
+        const sessionMap = {};
         for (const flag of flags) {
-            // Dynamic backfill for existing DB records if they are null
-            if (!flag.ai_verdict || !flag.ai_reason) {
-                const calculated = getFlagAiVerdict(flag.alert_type, flag.detail);
-                flag.ai_verdict = flag.ai_verdict || calculated.ai_verdict;
-                flag.ai_reason = flag.ai_reason || calculated.ai_reason;
-                
-                // Save backfilled value to DB asynchronously
-                flag.save().catch(err => console.error("Error auto-saving backfilled flag verdict:", err));
-            }
+            const sid = flag.session_id;
+            if (!sessionMap[sid]) {
+                // Get student info
+                const student = await User.findByPk(flag.student_id, {
+                    attributes: ['id', 'name', 'email']
+                });
+                // Get exam info
+                const exam = await Exam.findByPk(flag.exam_id, {
+                    attributes: ['id', 'title']
+                });
 
-            const sId = flag.session_id;
-            if (!sessionsMap[sId]) {
-                sessionsMap[sId] = {
-                    session_id: sId,
-                    student: flag.student ? {
-                        id: flag.student.id,
-                        name: flag.student.name,
-                        email: flag.student.email
-                    } : { id: flag.student_id, name: 'Unknown Student', email: '' },
-                    exam: flag.exam ? {
-                        id: flag.exam.id,
-                        title: flag.exam.title
-                    } : { id: flag.exam_id, title: 'Unknown Exam' },
-                    flagsCount: 0,
-                    flags: [],
-                    latestFlagAt: flag.createdAt
+                sessionMap[sid] = {
+                    session_id   : sid,
+                    student      : student,
+                    exam         : exam,
+                    flags        : [],
+                    flagsCount   : 0,
+                    latestFlagAt : flag.createdAt,
+                    verdict      : null,
+                    reason       : null
                 };
             }
-            sessionsMap[sId].flagsCount += 1;
-            sessionsMap[sId].flags.push(flag);
+            sessionMap[sid].flags.push(flag);
+            sessionMap[sid].flagsCount++;
         }
 
-        // Calculate session level verdicts
-        for (const sId in sessionsMap) {
-            const session = sessionsMap[sId];
-            const verdictInfo = calculateSessionVerdict(session.flags);
-            session.verdict = verdictInfo.verdict;
-            session.reason = verdictInfo.reason;
-        }
+        // Compute verdict per session
+        const sessions = Object.values(sessionMap).map((session) => {
+            const count = session.flagsCount;
+            const hasMultipleFaces = session.flags.some(
+                (f) => f.alert_type === 'MULTIPLE_FACES'
+            );
+            const hasTabSwitch = session.flags.some(
+                (f) => f.alert_type === 'TAB_SWITCH'
+            );
 
-        const sessionsList = Object.values(sessionsMap);
-        res.json(sessionsList);
+            if (count >= 5 || hasMultipleFaces) {
+                session.verdict = 'CRITICAL';
+                session.reason  = 'Multiple serious violations detected including face or tab events.';
+            } else if (count >= 2 || hasTabSwitch) {
+                session.verdict = 'SUSPICIOUS';
+                session.reason  = 'Some suspicious activity detected — manual review recommended.';
+            } else {
+                session.verdict = 'NORMAL';
+                session.reason  = 'Normal session activity with minimal flags.';
+            }
+
+            return session;
+        });
+
+        res.json(sessions);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
