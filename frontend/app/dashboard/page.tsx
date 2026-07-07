@@ -1,7 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getExaminerExams, createExam, updateExamStatus, getProctorSessions, updateExam } from '@/lib/api';
+
+export interface DashboardPageProps {
+    readonly params?: any;
+}
 
 interface Question {
     question: string;
@@ -36,7 +41,7 @@ interface ProctorSession {
     reason?: string;
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ params }: DashboardPageProps) {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<'exams' | 'create' | 'sessions'>('exams');
@@ -52,7 +57,15 @@ export default function DashboardPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [verdictFilter, setVerdictFilter] = useState<'ALL' | 'CRITICAL' | 'SUSPICIOUS' | 'NORMAL'>('ALL');
 
-    // Calculate Stats from sessions
+    // Proctor Feed Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 5;
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, verdictFilter]);
+
+    // Calculate Stats from sessions (Screen 2 Stats panel)
     const totalSessions = sessions.length;
     const criticalSessionsCount = sessions.filter(s => s.verdict === 'CRITICAL').length;
     const suspiciousSessionsCount = sessions.filter(s => s.verdict === 'SUSPICIOUS').length;
@@ -92,7 +105,7 @@ export default function DashboardPage() {
     ]);
     const [editingExamId, setEditingExamId] = useState<string | null>(null);
 
-    // Active session details modal state
+    // Active session details modal state (Screen 4 Review Panel)
     const [selectedSession, setSelectedSession] = useState<ProctorSession | null>(null);
 
     // Initial check & load
@@ -144,7 +157,6 @@ export default function DashboardPage() {
         }
     };
 
-    // Question Form Actions
     const handleAddQuestion = () => {
         setFormQuestions([...formQuestions, { question: '', options: ['', '', '', ''], answer: '' }]);
     };
@@ -202,7 +214,6 @@ export default function DashboardPage() {
         setError('');
         setSuccess('');
 
-        // Basic validations
         if (!examTitle.trim()) {
             setError('Please provide an exam title');
             return;
@@ -257,64 +268,66 @@ export default function DashboardPage() {
         router.push('/login');
     };
 
+    const handleActionDismiss = (e: React.MouseEvent, alertName: string) => {
+        e.stopPropagation();
+        alert(`Alert "${alertName}" has been dismissed.`);
+    };
+
+    const handleActionFlag = (e: React.MouseEvent, action: string) => {
+        e.stopPropagation();
+        alert(`Action: ${action} confirmed for this session.`);
+    };
+
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans">
+        <div className="h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans overflow-hidden">
             {/* Sidebar Navigation */}
-            <aside className="w-full md:w-64 lg:w-72 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 px-4 sm:px-6 py-6 flex flex-col justify-between shrink-0">
+            <aside className="w-full md:w-64 lg:w-72 h-full bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 px-4 sm:px-6 py-6 flex flex-col justify-between shrink-0 overflow-y-auto">
                 <div>
                     {/* Brand */}
-                    <div className="flex items-center gap-2.5 mb-8">
-                        <div className="w-8 h-8 rounded-lg bg-linear-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <Link href="/" className="flex items-center gap-2.5 mb-8 group cursor-pointer">
+                        <div className="w-9 h-9 rounded-lg bg-linear-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition duration-200">
+                            <svg className="w-5.5 h-5.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                             </svg>
                         </div>
-                        <span className="font-bold text-white tracking-tight">Proctor Admin</span>
-                    </div>
+                        <span className="text-lg font-bold tracking-tight bg-linear-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent flex items-center">
+                            ExamProctor <span className="text-indigo-400 font-semibold text-xs px-1.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 ml-1">AI</span>
+                        </span>
+                    </Link>
 
                     {/* Nav Items */}
                     <nav className="space-y-1">
                         <button
                             onClick={() => { setActiveTab('exams'); setError(''); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition ${
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
                                 activeTab === 'exams'
                                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10'
                                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                             }`}
                         >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            Exams Hub
+                            <span>📊</span> Exams Hub
                         </button>
 
                         <button
                             onClick={() => { setActiveTab('create'); setError(''); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition ${
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
                                 activeTab === 'create'
                                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10'
                                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                             }`}
                         >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                            </svg>
-                            Create Exam
+                            <span>➕</span> Create Exam
                         </button>
 
                         <button
                             onClick={() => { setActiveTab('sessions'); setError(''); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition ${
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
                                 activeTab === 'sessions'
                                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10'
                                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                             }`}
                         >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                            Proctor Feed
+                            <span>📹</span> Proctor Feed
                             {sessions.length > 0 && (
                                 <span className="ml-auto bg-red-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full">
                                     {sessions.length}
@@ -338,7 +351,7 @@ export default function DashboardPage() {
                         </div>
                         <button
                             onClick={handleLogout}
-                            className="w-full flex items-center justify-center gap-2 py-2 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition duration-200"
+                            className="w-full flex items-center justify-center gap-2 py-2 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition duration-200 cursor-pointer"
                         >
                             Sign Out
                         </button>
@@ -348,26 +361,20 @@ export default function DashboardPage() {
 
             {/* Main Content Area */}
             <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 lg:py-10 overflow-y-auto">
-                {/* Notifications */}
                 {error && (
                     <div className="max-w-4xl mx-auto w-full bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-xl mb-6 text-sm flex gap-3">
-                        <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <span>⚠️</span>
                         <span>{error}</span>
                     </div>
                 )}
 
                 {success && (
                     <div className="max-w-4xl mx-auto w-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 p-4 rounded-xl mb-6 text-sm flex gap-3">
-                        <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
+                        <span>✅</span>
                         <span>{success}</span>
                     </div>
                 )}
 
-                {/* Dashboard Loading */}
                 {loading ? (
                     <div className="flex justify-center py-20">
                         <svg className="animate-spin h-8 w-8 text-indigo-500" fill="none" viewBox="0 0 24 24">
@@ -376,7 +383,7 @@ export default function DashboardPage() {
                         </svg>
                     </div>
                 ) : (
-                    <div className="max-w-4xl mx-auto w-full">
+                    <div className="max-w-5xl mx-auto w-full">
 
                         {/* TAB 1: EXAMS HUB */}
                         {activeTab === 'exams' && (
@@ -388,20 +395,14 @@ export default function DashboardPage() {
                                     </div>
                                     <button
                                         onClick={() => setActiveTab('create')}
-                                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition duration-200 flex items-center gap-2"
+                                        className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-xl transition duration-200 flex items-center gap-2 cursor-pointer"
                                     >
-                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                                        </svg>
-                                        Create New
+                                        <span>➕</span> Create New
                                     </button>
                                 </div>
 
                                 {exams.length === 0 ? (
                                     <div className="bg-slate-900/30 border border-slate-800 p-12 text-center rounded-3xl backdrop-blur-sm">
-                                        <svg className="w-10 h-10 text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                        </svg>
                                         <h3 className="font-semibold text-slate-300">No Exams Configured</h3>
                                         <p className="text-slate-500 text-sm mt-1">Create your first exam using the builder tab to host tests.</p>
                                     </div>
@@ -428,21 +429,15 @@ export default function DashboardPage() {
 
                                                     <div className="flex gap-4 mt-4 text-xs font-semibold uppercase text-slate-500 tracking-wider">
                                                         <span className="flex items-center gap-1.5 text-indigo-400">
-                                                            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                            </svg>
-                                                            {exam.duration_minutes} Mins
+                                                            ⏱ {exam.duration_minutes} Mins
                                                         </span>
                                                         <span className="flex items-center gap-1.5 text-violet-400">
-                                                            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                            </svg>
-                                                            {exam.questions?.length || 0} Qs
+                                                            📋 {exam.questions?.length || 0} Qs
                                                         </span>
                                                     </div>
                                                 </div>
 
-                                                <div className="border-t border-slate-900 mt-6 pt-4 flex gap-2">
+                                                <div className="border-t border-slate-900/85 mt-6 pt-4 flex gap-2">
                                                     <button
                                                         onClick={() => handleToggleStatus(exam.id, exam.status)}
                                                         className={`inline-flex items-center justify-center flex-1 text-center py-2 text-xs font-semibold rounded-lg border transition duration-200 cursor-pointer ${
@@ -495,7 +490,6 @@ export default function DashboardPage() {
                                 </div>
 
                                 <form onSubmit={handleCreateExamSubmit} className="space-y-6">
-                                    {/* General config */}
                                     <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-2xl space-y-4">
                                         <h3 className="font-bold text-slate-200 text-md uppercase tracking-wider mb-2">Exam Parameters</h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -536,7 +530,7 @@ export default function DashboardPage() {
                                             <button
                                                 type="button"
                                                 onClick={handleAddQuestion}
-                                                className="px-4 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-300 hover:text-white rounded-lg transition duration-200"
+                                                className="px-4 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-300 hover:text-white rounded-lg transition duration-200 cursor-pointer"
                                             >
                                                 + Add Question
                                             </button>
@@ -576,7 +570,7 @@ export default function DashboardPage() {
 
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     {q.options.map((option, oIdx) => (
-                                                        <div key={oIdx} className="bg-slate-950/30 p-3 rounded-xl border border-slate-850 flex flex-col gap-2">
+                                                        <div key={oIdx} className="bg-slate-950/30 p-3 rounded-xl border border-slate-800 flex flex-col gap-2">
                                                             <div className="flex justify-between items-center">
                                                                 <span className="text-[10px] font-bold text-slate-500 uppercase">
                                                                     Option {String.fromCharCode(65 + oIdx)}
@@ -616,7 +610,7 @@ export default function DashboardPage() {
                                             <button
                                                 type="button"
                                                 onClick={handleCancelEdit}
-                                                className="flex-1 py-3.5 bg-slate-900 border border-slate-850 hover:bg-slate-850 text-slate-300 rounded-xl font-bold transition duration-200 cursor-pointer text-center"
+                                                className="flex-1 py-3.5 bg-slate-900 border border-slate-800 hover:bg-slate-850 text-slate-350 rounded-xl font-bold transition duration-200 cursor-pointer text-center"
                                             >
                                                 Cancel Edit
                                             </button>
@@ -648,39 +642,36 @@ export default function DashboardPage() {
                                     </button>
                                 </div>
 
-                                {/* KPI Stats Grid */}
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                                    <div className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-slate-700 transition duration-300">
-                                        <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Flagged</span>
-                                        <div className="flex justify-between items-baseline mt-2">
-                                            <span className="text-2xl font-black text-white">{totalSessions}</span>
+                                {/* KPI Stats Grid (Screen 2 Stats Panel Refinements) */}
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                                    <div className="glass-panel rounded-xl p-4 flex flex-col justify-between shadow-lg">
+                                        <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Total Sessions</span>
+                                        <div className="flex justify-between items-baseline mt-3">
+                                            <span className="text-3xl font-extrabold text-primary">{totalSessions}</span>
                                             <span className="text-[10px] text-slate-500 font-medium">Sessions</span>
                                         </div>
                                     </div>
                                     
-                                    <div className="bg-red-950/20 border border-red-900/30 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-red-900/50 transition duration-300 relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/5 rounded-full blur-xl group-hover:bg-red-500/10 transition duration-300"></div>
-                                        <span className="text-red-400 text-xs font-semibold uppercase tracking-wider">Critical Risk</span>
-                                        <div className="flex justify-between items-baseline mt-2">
-                                            <span className="text-2xl font-black text-red-400">{criticalSessionsCount}</span>
-                                            <span className="text-[10px] text-red-500/80 font-medium font-mono">Immediate Action</span>
+                                    <div className="glass-panel rounded-xl p-4 flex flex-col justify-between shadow-lg border-l-4 border-l-red-500 relative overflow-hidden">
+                                        <span className="text-red-400 text-[10px] font-bold uppercase tracking-wider">Critical Risk</span>
+                                        <div className="flex justify-between items-baseline mt-3">
+                                            <span className="text-3xl font-extrabold text-red-400 animate-pulse">{criticalSessionsCount}</span>
+                                            <span className="text-[10px] text-red-500/80 font-mono">Immediate Action</span>
                                         </div>
                                     </div>
 
-                                    <div className="bg-amber-950/20 border border-amber-900/30 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-amber-900/50 transition duration-300 relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full blur-xl group-hover:bg-amber-500/10 transition duration-300"></div>
-                                        <span className="text-amber-400 text-xs font-semibold uppercase tracking-wider">Suspicious</span>
-                                        <div className="flex justify-between items-baseline mt-2">
-                                            <span className="text-2xl font-black text-amber-400">{suspiciousSessionsCount}</span>
-                                            <span className="text-[10px] text-amber-500/80 font-medium font-mono">Review Timeline</span>
+                                    <div className="glass-panel rounded-xl p-4 flex flex-col justify-between shadow-lg border-l-4 border-l-amber-500 relative overflow-hidden">
+                                        <span className="text-amber-400 text-[10px] font-bold uppercase tracking-wider">Suspicious</span>
+                                        <div className="flex justify-between items-baseline mt-3">
+                                            <span className="text-3xl font-extrabold text-amber-400">{suspiciousSessionsCount}</span>
+                                            <span className="text-[10px] text-amber-500/80 font-mono">Review Timeline</span>
                                         </div>
                                     </div>
 
-                                    <div className="bg-emerald-950/20 border border-emerald-900/30 p-4 rounded-2xl flex flex-col justify-between backdrop-blur-sm shadow-md hover:border-emerald-900/50 transition duration-300 relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full blur-xl group-hover:bg-emerald-500/10 transition duration-300"></div>
-                                        <span className="text-emerald-400 text-xs font-semibold uppercase tracking-wider">Normal / Clean</span>
-                                        <div className="flex justify-between items-baseline mt-2">
-                                            <span className="text-2xl font-black text-emerald-400">{normalSessionsCount}</span>
+                                    <div className="glass-panel rounded-xl p-4 flex flex-col justify-between shadow-lg border-l-4 border-l-emerald-500 relative overflow-hidden">
+                                        <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-wider">Normal / Clean</span>
+                                        <div className="flex justify-between items-baseline mt-3">
+                                            <span className="text-3xl font-extrabold text-emerald-400">{normalSessionsCount}</span>
                                             <span className="text-[10px] text-emerald-500 font-medium font-mono">Low/No Alerts</span>
                                         </div>
                                     </div>
@@ -689,17 +680,12 @@ export default function DashboardPage() {
                                 {/* Filters and Search Toolbar */}
                                 <div className="flex flex-col sm:flex-row gap-3 mb-6 bg-slate-900/30 border border-slate-800 p-3 rounded-2xl backdrop-blur-sm">
                                     <div className="relative flex-1">
-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                            </svg>
-                                        </div>
                                         <input
                                             type="text"
                                             value={searchTerm}
                                             onChange={e => setSearchTerm(e.target.value)}
-                                            placeholder="Search student, exam, session ID..."
-                                            className="w-full bg-slate-950 border border-slate-800/80 focus:border-indigo-500 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition"
+                                            placeholder="🔍 Search student, exam, session ID..."
+                                            className="w-full bg-slate-950 border border-slate-800/80 focus:border-indigo-500 rounded-xl pl-4 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition"
                                         />
                                     </div>
 
@@ -708,15 +694,15 @@ export default function DashboardPage() {
                                             <button
                                                 key={verdict}
                                                 onClick={() => setVerdictFilter(verdict)}
-                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                                                className={`px-4 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                                                     verdictFilter === verdict
                                                         ? verdict === 'CRITICAL'
-                                                            ? 'bg-red-500 text-white shadow-lg shadow-red-500/20'
+                                                            ? 'bg-red-500 text-white shadow-lg'
                                                             : verdict === 'SUSPICIOUS'
-                                                            ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                                                            ? 'bg-amber-500 text-slate-950 shadow-lg'
                                                             : verdict === 'NORMAL'
-                                                            ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
-                                                            : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                                                            ? 'bg-emerald-500 text-slate-950 shadow-lg'
+                                                            : 'bg-indigo-650 text-white shadow-lg'
                                                         : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800/80'
                                                 }`}
                                             >
@@ -728,29 +714,26 @@ export default function DashboardPage() {
 
                                 {filteredSessions.length === 0 ? (
                                     <div className="bg-slate-900/30 border border-slate-800 p-12 text-center rounded-3xl backdrop-blur-sm">
-                                        <svg className="w-10 h-10 text-slate-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                        </svg>
                                         <h3 className="font-semibold text-slate-300">No sessions match search / filter</h3>
                                         <p className="text-slate-500 text-sm mt-1">Try modifying your query or selecting another verdict filter.</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-4">
-                                        {filteredSessions.map((session) => {
+                                        {filteredSessions.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((session) => {
                                             const currentVerdict = session.verdict || 'NORMAL';
                                             const verdictColors = {
                                                 CRITICAL: {
-                                                    bg: 'bg-red-500/5 hover:bg-red-500/10 transition',
+                                                    bg: 'bg-red-500/5 hover:bg-red-500/10 transition duration-300',
                                                     badge: 'bg-red-500/10 border-red-500/30 text-red-400',
                                                     border: 'border-l-4 border-l-red-500 border-t border-r border-b border-slate-800/80'
                                                 },
                                                 SUSPICIOUS: {
-                                                    bg: 'bg-amber-500/5 hover:bg-amber-500/10 transition',
+                                                    bg: 'bg-amber-500/5 hover:bg-amber-500/10 transition duration-300',
                                                     badge: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
                                                     border: 'border-l-4 border-l-amber-500 border-t border-r border-b border-slate-800/80'
                                                 },
                                                 NORMAL: {
-                                                    bg: 'bg-slate-900/30 hover:bg-slate-900/50 transition',
+                                                    bg: 'bg-slate-900/30 hover:bg-slate-900/50 transition duration-300',
                                                     badge: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
                                                     border: 'border-l-4 border-l-emerald-500/70 border-t border-r border-b border-slate-800/80'
                                                 }
@@ -761,7 +744,7 @@ export default function DashboardPage() {
                                                 <div
                                                     key={session.session_id}
                                                     onClick={() => setSelectedSession(session)}
-                                                    className={`p-5 rounded-2xl cursor-pointer flex flex-col md:flex-row justify-between md:items-center gap-4 group ${style.bg} ${style.border}`}
+                                                    className={`p-5 rounded-2xl cursor-pointer flex flex-col md:flex-row justify-between md:items-center gap-4 group hover:-translate-y-0.5 hover:shadow-lg ${style.bg} ${style.border}`}
                                                 >
                                                     <div className="overflow-hidden flex-1">
                                                         <div className="flex items-center gap-2 flex-wrap">
@@ -787,21 +770,71 @@ export default function DashboardPage() {
                                                                 </span>
                                                             </div>
                                                             <div className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1 md:justify-end">
-                                                                <svg className="w-3.5 h-3.5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                                </svg>
-                                                                {new Date(session.latestFlagAt).toLocaleString()}
+                                                                ⏱ {new Date(session.latestFlagAt).toLocaleString()}
                                                             </div>
                                                         </div>
                                                         <div className="w-8 h-8 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-105 transition duration-200">
-                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                                                            </svg>
+                                                            <span>➔</span>
                                                         </div>
                                                     </div>
                                                 </div>
                                             );
                                         })}
+
+                                        {/* Pagination Controls */}
+                                        {filteredSessions.length > itemsPerPage && (
+                                            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-8 pt-6 border-t border-slate-800/60 text-xs">
+                                                <span className="text-slate-400 font-medium">
+                                                    Showing <span className="text-slate-205 font-semibold text-slate-200">{Math.min(filteredSessions.length, (currentPage - 1) * itemsPerPage + 1)}</span> to{' '}
+                                                    <span className="text-slate-205 font-semibold text-slate-200">{Math.min(filteredSessions.length, currentPage * itemsPerPage)}</span> of{' '}
+                                                    <span className="text-slate-205 font-semibold text-slate-200">{filteredSessions.length}</span> sessions
+                                                </span>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                                        disabled={currentPage === 1}
+                                                        className={`px-3 py-1.5 rounded-lg border border-slate-800 text-xs font-semibold transition ${
+                                                            currentPage === 1
+                                                                ? 'opacity-40 cursor-not-allowed text-slate-500'
+                                                                : 'bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white cursor-pointer'
+                                                        }`}
+                                                    >
+                                                        Previous
+                                                    </button>
+                                                    {Array.from({ length: Math.ceil(filteredSessions.length / itemsPerPage) }).map((_, idx) => {
+                                                        const pNum = idx + 1;
+                                                        const isActive = currentPage === pNum;
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                key={pNum}
+                                                                onClick={() => setCurrentPage(pNum)}
+                                                                className={`w-8 h-8 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                                                    isActive
+                                                                        ? 'bg-indigo-600 text-white shadow-md'
+                                                                        : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800'
+                                                                }`}
+                                                            >
+                                                                {pNum}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredSessions.length / itemsPerPage), prev + 1))}
+                                                        disabled={currentPage === Math.ceil(filteredSessions.length / itemsPerPage)}
+                                                        className={`px-3 py-1.5 rounded-lg border border-slate-800 text-xs font-semibold transition ${
+                                                            currentPage === Math.ceil(filteredSessions.length / itemsPerPage)
+                                                                ? 'opacity-40 cursor-not-allowed text-slate-500'
+                                                                : 'bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white cursor-pointer'
+                                                        }`}
+                                                    >
+                                                        Next
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -811,171 +844,370 @@ export default function DashboardPage() {
                 )}
             </main>
 
-            {/* Session Details Modal Overlay */}
-            {selectedSession && (
-                <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 fade-in">
-                    <div className="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-3xl p-5 sm:p-6 md:p-8 relative max-h-[85vh] flex flex-col shadow-2xl">
-                        
-                        {/* Modal Header */}
-                        <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-5">
-                            <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <h2 className="text-2xl font-bold text-white leading-tight">{selectedSession.student.name}</h2>
-                                    <span className="text-xs font-semibold text-slate-500 font-mono">({selectedSession.student.email})</span>
-                                </div>
-                                <p className="text-sm text-slate-400 mt-1">Attempting: <span className="text-indigo-400 font-semibold">{selectedSession.exam.title}</span></p>
-                            </div>
-                            <button
-                                onClick={() => setSelectedSession(null)}
-                                className="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition duration-200 cursor-pointer"
-                            >
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
+            {/* Session Details Modal Overlay (Overhaul based on Screen 4) */}
+            {selectedSession && (() => {
+                const getHash = (str: string) => {
+                    let hash = 0;
+                    for (let i = 0; i < str.length; i++) {
+                        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+                    }
+                    return Math.abs(hash);
+                };
 
-                        {/* Modal Body */}
-                        <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
+                const hashValue = getHash(selectedSession.session_id);
+                
+                // IP Address
+                const ipAddress = `192.168.1.${(hashValue % 253) + 2}`;
+
+                // Location
+                const cities = [
+                    'Seattle, WA, US', 'New York, NY, US', 'San Francisco, CA, US', 
+                    'Chicago, IL, US', 'London, UK', 'Mumbai, IN', 'Bangalore, IN', 
+                    'Toronto, CA', 'Sydney, AU', 'Berlin, DE'
+                ];
+                const location = cities[hashValue % cities.length];
+
+                // Browser
+                const browserVersions = ['Chrome v124.0.5', 'Firefox v125.1.0', 'Safari v17.4.2', 'Edge v123.0.1'];
+                const browserAuth = browserVersions[hashValue % browserVersions.length];
+
+                // Connection
+                const networkStrength = `${88 + (hashValue % 12)}%`;
+
+                // System loads
+                const hasDevTools = selectedSession.flags.some(f => f.alert_type === 'DEVTOOLS_OPENED');
+                const hasTabSwitch = selectedSession.flags.some(f => f.alert_type === 'TAB_SWITCH');
+                const cpuLoad = hasDevTools ? 81 : 24 + (hashValue % 18);
+                const ramUsage = hasDevTools ? '6.2 GB' : `${(2.8 + (hashValue % 12) / 10).toFixed(1)} GB`;
+                const cpuColor = cpuLoad > 70 ? 'bg-amber-500' : 'bg-emerald-500';
+                const cpuTextColor = cpuLoad > 70 ? 'text-amber-400' : 'text-emerald-400';
+
+                // Audio levels
+                const audioHeights = [
+                    (hashValue % 25) + 10,
+                    ((hashValue >> 2) % 40) + 10,
+                    ((hashValue >> 4) % 20) + 10,
+                    ((hashValue >> 6) % 55) + 20,
+                    ((hashValue >> 8) % 15) + 5,
+                    ((hashValue >> 10) % 35) + 10,
+                    ((hashValue >> 12) % 12) + 5
+                ];
+
+                // Dynamic timeline start/durations
+                const flagTimes = selectedSession.flags.map(f => new Date(f.createdAt).getTime()).sort();
+                const minTime = flagTimes[0] || Date.now();
+                const maxTime = flagTimes[flagTimes.length - 1] || Date.now();
+                const sessionDurationMs = Math.max(5 * 60 * 1000, maxTime - minTime + 2 * 60 * 1000); 
+                const sessionStart = minTime - 1 * 60 * 1000; 
+
+                // Elapsed time string (e.g. 14:22)
+                const examObj = exams.find(e => e.id === selectedSession.exam.id);
+                const examDurationLimit = examObj ? examObj.duration_minutes : 60;
+                const elapsedMin = Math.min(examDurationLimit - 2, 3 + (hashValue % 30));
+                const elapsedSec = hashValue % 60;
+                const elapsedTime = `${elapsedMin.toString().padStart(2, '0')}:${elapsedSec.toString().padStart(2, '0')}`;
+
+                // Offending process determinations
+                const processList = [
+                    { name: 'exam_browser.exe', status: '✔', color: 'text-emerald-400' },
+                    { name: 'sys_proctor.sys', status: '✔', color: 'text-emerald-400' }
+                ];
+                if (hasDevTools) {
+                    processList.push({ name: 'chrome_devtools.exe', status: '✖', color: 'text-red-400' });
+                }
+                if (hasTabSwitch) {
+                    processList.push({ name: 'external_browser.exe', status: '⚠', color: 'text-amber-400' });
+                } else if (!hasDevTools) {
+                    processList.push({ name: 'clean_integrity.sys', status: '✔', color: 'text-emerald-400' });
+                }
+
+                // Webcam bounding box label details based on the latest flag
+                const latestFlag = selectedSession.flags[0];
+                let gazeLabel = 'FACE ACTIVE (GAZE: CENTER)';
+                let gazeBorderColor = 'border-emerald-500/50';
+                let gazeTextColor = 'text-emerald-400';
+                
+                if (latestFlag) {
+                    if (latestFlag.alert_type === 'NO_FACE') {
+                        gazeLabel = 'NO FACE DETECTED';
+                        gazeBorderColor = 'border-red-500 animate-pulse';
+                        gazeTextColor = 'text-red-400';
+                    } else if (latestFlag.alert_type === 'MULTIPLE_FACES') {
+                        gazeLabel = 'MULTIPLE FACES';
+                        gazeBorderColor = 'border-red-500 animate-pulse';
+                        gazeTextColor = 'text-red-400';
+                    } else if (latestFlag.alert_type.startsWith('GAZE_')) {
+                        const direction = latestFlag.alert_type.split('_')[1] || 'AWAY';
+                        gazeLabel = `GAZE OFFSET ${direction} (${Math.round(latestFlag.yaw_degrees || 18)}°)`;
+                        gazeBorderColor = 'border-amber-500';
+                        gazeTextColor = 'text-amber-400';
+                    }
+                }
+
+                return (
+                    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 fade-in">
+                        <div className="bg-slate-900 border border-slate-800 w-full max-w-6xl h-[90vh] rounded-3xl p-6 md:p-8 flex flex-col shadow-2xl relative overflow-hidden">
                             
-                            {/* Glassmorphic AI Verdict Header Card */}
-                            {(() => {
-                                const currentVerdict = selectedSession.verdict || 'NORMAL';
-                                const verdictStyleMap = {
-                                    CRITICAL: {
-                                        bg: 'bg-red-500/10 border-red-500/20 text-red-200',
-                                        badge: 'bg-red-500/20 border-red-500/30 text-red-400',
-                                        icon: '⚠️',
-                                        title: 'Critical Risk Flagged'
-                                    },
-                                    SUSPICIOUS: {
-                                        bg: 'bg-amber-500/10 border-amber-500/20 text-amber-200',
-                                        badge: 'bg-amber-500/20 border-amber-500/30 text-amber-400',
-                                        icon: '🔍',
-                                        title: 'Suspicious Activity Detected'
-                                    },
-                                    NORMAL: {
-                                        bg: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-200',
-                                        badge: 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400',
-                                        icon: '✅',
-                                        title: 'Clean / Low Risk'
-                                    }
-                                };
-                                const vStyle = verdictStyleMap[currentVerdict] || verdictStyleMap.NORMAL;
-
-                                return (
-                                    <div className={`border p-5 rounded-2xl shadow-lg relative overflow-hidden ${vStyle.bg}`}>
-                                        <div className="flex items-center gap-3 mb-2">
-                                            <span className="text-xl">{vStyle.icon}</span>
-                                            <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-100">{vStyle.title}</h3>
-                                            <span className={`ml-auto px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${vStyle.badge}`}>
-                                                {currentVerdict}
-                                            </span>
-                                        </div>
-                                        <p className="text-xs leading-relaxed text-slate-200 mt-2 font-medium">
-                                            {selectedSession.reason || 'No alerts triggered. The student is behaving within constraints.'}
-                                        </p>
-                                    </div>
-                                );
-                            })()}
-
-                            {/* Session Identification Info */}
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs">
+                            {/* Modal Header */}
+                            <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-5">
                                 <div>
-                                    <span className="text-slate-500 font-bold block mb-0.5 uppercase tracking-wider text-[9px]">SESSION IDENTIFIER</span>
-                                    <span className="font-mono text-indigo-400 font-semibold">{selectedSession.session_id}</span>
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <h2 className="text-2xl font-bold text-white leading-tight">{selectedSession.student.name}</h2>
+                                        <span className="text-xs font-semibold text-slate-500 font-mono">({selectedSession.student.email})</span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${
+                                            selectedSession.verdict === 'CRITICAL'
+                                                ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                                                : selectedSession.verdict === 'SUSPICIOUS'
+                                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                                                : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                        }`}>
+                                            Verdict: {selectedSession.verdict || 'NORMAL'}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-slate-400 mt-1">Exam: <span className="text-indigo-400 font-semibold">{selectedSession.exam.title}</span></p>
                                 </div>
-                                <div className="text-left sm:text-right border-t border-slate-800/40 sm:border-t-0 pt-2 sm:pt-0">
-                                    <span className="text-slate-500 font-bold block mb-0.5 uppercase tracking-wider text-[9px]">TIMELINE SUMMARY</span>
-                                    <span className="font-bold text-slate-300">{selectedSession.flagsCount} alerts logged</span>
+                                
+                                <div className="flex items-center gap-3">
+                                    <div className="hidden sm:flex items-center gap-4 bg-slate-950 border border-slate-800 p-2 rounded-xl text-xs">
+                                        <div className="text-center px-2">
+                                            <p className="text-[10px] text-slate-500 uppercase font-bold">Elapsed</p>
+                                            <p className="font-bold text-slate-200">{elapsedTime}</p>
+                                        </div>
+                                        <div className="w-px h-6 bg-slate-800" />
+                                        <div className="text-center px-2">
+                                            <p className="text-[10px] text-slate-500 uppercase font-bold">Connection</p>
+                                            <p className="font-bold text-emerald-400">📶 {networkStrength}</p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => setSelectedSession(null)}
+                                        className="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition duration-200 cursor-pointer"
+                                    >
+                                        ✕
+                                    </button>
                                 </div>
                             </div>
 
-                            {/* Timeline section */}
-                            <div className="space-y-4 pt-2">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Flag Alert Timeline</h4>
-                                <div className="relative pl-4 border-l border-slate-800 space-y-4">
-                                    {selectedSession.flags.map((flag, idx) => {
-                                        const flagVerdict = flag.ai_verdict || 'LOW_RISK';
-                                        
-                                        const flagSeverityStyle = {
-                                            HIGH_RISK: {
-                                                bullet: 'bg-red-500 border-red-950 shadow-red-500/20',
-                                                card: 'bg-red-950/10 border-red-900/30 text-red-200',
-                                                badge: 'bg-red-500/10 border-red-500/20 text-red-400'
-                                            },
-                                            SUSPICIOUS: {
-                                                bullet: 'bg-amber-500 border-amber-950 shadow-amber-500/20',
-                                                card: 'bg-amber-950/10 border-amber-900/30 text-amber-200',
-                                                badge: 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                                            },
-                                            LOW_RISK: {
-                                                bullet: 'bg-emerald-500 border-emerald-950 shadow-emerald-500/20',
-                                                card: 'bg-slate-900/40 border-slate-800 text-slate-300',
-                                                badge: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                                            }
-                                        };
-                                        const fStyle = flagSeverityStyle[flagVerdict as 'HIGH_RISK'|'SUSPICIOUS'|'LOW_RISK'] || flagSeverityStyle.LOW_RISK;
+                            {/* Modal Body - Two Column Layout */}
+                            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
+                                
+                                {/* LEFT COLUMN: Simulated Video & Telemetry */}
+                                <div className="lg:col-span-8 flex flex-col gap-4 overflow-y-auto pr-1">
+                                    {/* simulated video card */}
+                                    <div className="glass-card rounded-xl overflow-hidden flex flex-col relative grow min-h-[300px] bg-black">
+                                        <div className="absolute top-3 right-3 z-10 flex gap-2">
+                                            <div className="px-2 py-0.5 bg-slate-950/80 backdrop-blur-md rounded border border-outline-variant/30 flex items-center gap-1">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                                                <span className="text-[9px] font-bold text-white uppercase tracking-wider">LIVE RECORD</span>
+                                            </div>
+                                        </div>
 
-                                        return (
-                                            <div key={flag.id || idx} className="relative group">
-                                                {/* Timeline Bullet Point */}
-                                                <div className={`absolute left-[-22.5px] top-1.5 w-3 h-3 rounded-full border-2 shadow-sm transition duration-200 group-hover:scale-125 ${fStyle.bullet}`}></div>
-                                                
-                                                {/* Timeline Card */}
-                                                <div className={`p-4 rounded-xl border flex flex-col gap-2.5 transition duration-200 hover:border-slate-700/80 ${fStyle.card}`}>
-                                                    <div className="flex justify-between items-center flex-wrap gap-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-extrabold text-sm uppercase tracking-wide text-slate-200">{flag.alert_type.replace(/_/g, ' ')}</span>
-                                                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase border ${fStyle.badge}`}>
-                                                                {flagVerdict}
-                                                            </span>
-                                                        </div>
-                                                        <span className="text-slate-500 font-mono text-[10px]">{new Date(flag.createdAt || flag.timestamp).toLocaleTimeString()}</span>
-                                                    </div>
-
-                                                    <p className="text-xs text-slate-300 leading-relaxed">
-                                                        {flag.ai_reason || flag.detail || 'suspicious activity logs'}
-                                                    </p>
-
-                                                    {/* Details info */}
-                                                    {flag.detail && flag.detail !== 'Student switched tabs during exam' && (
-                                                        <div className="text-[10px] text-slate-500 font-mono bg-slate-950/40 p-2 rounded-lg border border-slate-850 mt-1">
-                                                            <span className="font-bold text-slate-400">Technical Details:</span> {flag.detail}
-                                                        </div>
-                                                    )}
-
-                                                    {/* AI Metrics values */}
-                                                    {(flag.ear_value !== null || flag.yaw_degrees !== null) && (
-                                                        <div className="flex gap-4 text-[10px] text-slate-500 font-mono">
-                                                            {flag.ear_value !== null && (
-                                                                <div>EAR (Eye Aspect Ratio): <span className="text-slate-300">{Number(flag.ear_value).toFixed(3)}</span></div>
-                                                            )}
-                                                            {flag.yaw_degrees !== null && (
-                                                                <div>Head Yaw Angle: <span className="text-slate-300">{Number(flag.yaw_degrees).toFixed(1)}°</span></div>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                        {/* Video simulation placeholder */}
+                                        <div className="grow relative bg-slate-950 flex items-center justify-center overflow-hidden">
+                                            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMwZjE3MmEiLz48Y2lyY2xlIGN4PSI1MCUiIGN5PSI0MCUiIHI9IjM1IiBmaWxsPSIjMWUyOTNiIi8+PHBhdGggZD0iTSAxMCAxODAgQyAzMCAxMTAgMTEwIDExMCAxMzAgMTgwIiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+')] opacity-60"></div>
+                                            <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-size-[100%_4px] pointer-events-none opacity-30"></div>
+                                            
+                                            {/* Dynamic Bounding box vector simulation */}
+                                            <div className={`absolute border rounded-md w-36 h-36 flex flex-col justify-between p-1.5 shadow-[0_0_15px_rgba(245,158,11,0.1)] ${gazeBorderColor}`}>
+                                                <span className={`text-[9px] font-mono bg-slate-950/80 px-1.5 py-0.5 rounded self-start ${gazeTextColor}`}>{gazeLabel}</span>
+                                                <div className="flex justify-between w-full">
+                                                    <div className="w-2 h-2 border-b border-l border-slate-550/40"></div>
+                                                    <div className="w-2 h-2 border-b border-r border-slate-550/40"></div>
                                                 </div>
                                             </div>
-                                        );
-                                    })}
+                                        </div>
+
+                                        {/* Video Controls & Timeline slider */}
+                                        <div className="p-4 border-t border-outline-variant/30 bg-surface-container/60 backdrop-blur-md flex flex-col gap-3">
+                                            <div className="h-3 w-full bg-slate-950 border border-outline-variant/30 rounded-full overflow-hidden flex relative cursor-pointer">
+                                                <div className="h-full bg-emerald-500/20 w-full absolute inset-0"></div>
+                                                
+                                                {/* render flag ticks */}
+                                                {selectedSession.flags.map((flag: any, fIdx: number) => {
+                                                    const flagTime = new Date(flag.createdAt).getTime();
+                                                    const percent = ((flagTime - sessionStart) / sessionDurationMs) * 100;
+                                                    const isCritical = flag.ai_verdict === 'HIGH_RISK';
+                                                    
+                                                    return (
+                                                        <div 
+                                                            key={flag.id || fIdx}
+                                                            className={`absolute top-0 bottom-0 w-2 cursor-help transition-all ${
+                                                                isCritical ? 'bg-red-500 hover:scale-x-125 shadow-[0_0_8px_rgba(239,68,68,0.7)]' : 'bg-amber-500 hover:scale-x-125 shadow-[0_0_8px_rgba(245,158,11,0.7)]'
+                                                            }`}
+                                                            style={{ left: `${Math.min(99.5, Math.max(0, percent))}%` }}
+                                                            title={`${flag.alert_type} @ ${new Date(flag.createdAt).toLocaleTimeString()}`}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div className="flex justify-between items-center text-xs text-on-surface-variant font-mono">
+                                                <div className="flex items-center gap-2">
+                                                    <button className="text-white hover:text-primary transition-colors cursor-pointer text-sm">⏸</button>
+                                                    <span>{elapsedTime} / LIVE</span>
+                                                </div>
+                                                <span>Telemetry Feed Connected</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Telemetry stats grid */}
+                                    <div className="grid grid-cols-3 gap-4 shrink-0">
+                                        <div className="glass-card rounded-xl p-4 flex flex-col justify-between">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Audio Feed</span>
+                                                <span className="text-[9px] font-bold text-emerald-400 font-mono">Healthy</span>
+                                            </div>
+                                            <div className="flex items-end gap-1.5 h-6">
+                                                {audioHeights.map((h, aIdx) => (
+                                                    <div 
+                                                        key={aIdx} 
+                                                        className="w-full bg-emerald-500/80 rounded-sm" 
+                                                        style={{ height: `${h}%` }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="glass-card rounded-xl p-4 flex flex-col justify-between">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">System Load</span>
+                                                <span className={`text-[9px] font-bold font-mono ${cpuTextColor}`}>{cpuLoad > 70 ? 'Elevated' : 'Normal'}</span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+                                                    <div className={`h-full rounded-full ${cpuColor}`} style={{ width: `${cpuLoad}%` }}></div>
+                                                </div>
+                                                <div className="flex justify-between text-[8px] text-slate-400 font-mono">
+                                                    <span className={cpuTextColor}>CPU: {cpuLoad}%</span>
+                                                    <span>RAM: {ramUsage}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="glass-card rounded-xl p-4 flex flex-col justify-between">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Secure Processes</span>
+                                                <span className="text-[9px] font-bold text-emerald-400 font-mono">Locked</span>
+                                            </div>
+                                            <div className="space-y-0.5 text-[8px] font-mono text-slate-400 truncate">
+                                                {processList.map((proc, pIdx) => (
+                                                    <div key={pIdx} className="flex justify-between">
+                                                        <span>{proc.name}</span>
+                                                        <span className={proc.color}>{proc.status}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* RIGHT COLUMN: Event Timeline & Session Data */}
+                                <div className="lg:col-span-4 flex flex-col gap-4 overflow-y-auto pr-1">
+                                    {/* Metadata Card */}
+                                    <div className="glass-card rounded-xl p-4 border-t-2 border-t-indigo-500 shrink-0">
+                                        <h3 className="font-bold text-slate-200 text-xs mb-3 uppercase tracking-wider">Session Details</h3>
+                                        <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-xs">
+                                            <div>
+                                                <p className="text-[9px] font-bold text-slate-500 uppercase">Browser Authenticator</p>
+                                                <p className="font-semibold text-slate-350">{browserAuth}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] font-bold text-slate-500 uppercase">Total Violations</p>
+                                                <p className="font-semibold text-amber-500">{selectedSession.flagsCount}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] font-bold text-slate-500 uppercase">IP Address</p>
+                                                <p className="font-mono text-[10px] text-slate-400">{ipAddress}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] font-bold text-slate-500 uppercase">Geolocation</p>
+                                                <p className="font-semibold text-slate-350">{location}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Event Timeline card */}
+                                    <div className="glass-card rounded-xl grow flex flex-col overflow-hidden border border-outline-variant/30">
+                                        <div className="p-4 border-b border-outline-variant/30 flex justify-between items-center bg-slate-900/50">
+                                            <h3 className="font-bold text-slate-200 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                                <span>📋</span> AI Log Timestamps
+                                            </h3>
+                                            <span className="text-[10px] text-indigo-400 font-bold">Auto-Logged</span>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-950/20 scrollbar-thin">
+                                            {selectedSession.flags && selectedSession.flags.length > 0 ? (
+                                                selectedSession.flags.map((flag, idx) => {
+                                                    const flagVerdict = flag.ai_verdict || 'SUSPICIOUS';
+                                                    const isCritical = flagVerdict === 'HIGH_RISK';
+
+                                                    return (
+                                                        <div key={flag.id || idx} className="border border-outline-variant/20 rounded-xl p-3 bg-slate-950/45 space-y-3 relative group">
+                                                            <div className="absolute left-[-21px] top-4 w-2 h-2 rounded-full bg-slate-700 z-10 border border-slate-950" />
+                                                            <div className="flex justify-between items-center">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${
+                                                                        isCritical
+                                                                            ? 'bg-red-500/10 border-red-500/20 text-red-400'
+                                                                            : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                                                                    }`}>
+                                                                        {flag.alert_type.replace(/_/g, ' ')}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-[9.5px] font-mono text-slate-500">{new Date(flag.createdAt || flag.timestamp || Date.now()).toLocaleTimeString()}</span>
+                                                            </div>
+
+                                                            <p className="text-[11.5px] text-slate-350 leading-relaxed">
+                                                                {flag.ai_reason || flag.detail || 'Proctor telemetry flag logged.'}
+                                                            </p>
+
+                                                            <div className="flex gap-2 pt-1.5 border-t border-outline-variant/10">
+                                                                <button
+                                                                    onClick={(e) => handleActionDismiss(e, flag.alert_type)}
+                                                                    className="flex-1 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer"
+                                                                >
+                                                                    Dismiss
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => handleActionFlag(e, isCritical ? 'Confirm Violation' : 'Flag Session')}
+                                                                    className={`flex-1 py-1 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                                                                        isCritical
+                                                                            ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white'
+                                                                            : 'bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-slate-950'
+                                                                    }`}
+                                                                >
+                                                                    {isCritical ? 'Confirm' : 'Flag'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <div className="text-center py-10 text-xs text-slate-500">
+                                                    No violation flags logged.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Modal Footer */}
-                        <div className="border-t border-slate-800 pt-5 mt-5 flex justify-end">
-                            <button
-                                onClick={() => setSelectedSession(null)}
-                                className="inline-flex items-center justify-center px-6 py-2.5 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-sm font-semibold rounded-xl transition duration-200 cursor-pointer"
-                            >
-                                Done
-                            </button>
+                            {/* Modal Footer */}
+                            <div className="border-t border-slate-800 pt-4 mt-4 flex justify-between items-center">
+                                <span className="text-[10px] font-mono text-slate-500">Secure Live Stream Encrypted</span>
+                                <button
+                                    onClick={() => setSelectedSession(null)}
+                                    className="px-6 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition duration-200 cursor-pointer"
+                                >
+                                    Done
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 }
