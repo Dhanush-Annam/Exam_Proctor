@@ -27,7 +27,7 @@ export const login = (data: {
 export const getExams   = ()         => API.get('/api/exams');
 export const getExam    = (id: string) => API.get(`/api/exams/${id}`);
 export const createExam = (data: any) => API.post('/api/exams', data);
-export const getExaminerExams = ()   => API.get('/api/exams/examiner');
+export const getExaminerExams = ()   => API.get('/api/exams/mine');
 export const updateExamStatus = (id: string, status: string) =>
     API.patch(`/api/exams/${id}/status`, { status });
 export const updateExam = (id: string, data: any) =>
