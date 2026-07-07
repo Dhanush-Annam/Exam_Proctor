@@ -197,7 +197,13 @@ router.get('/sessions', auth, async (req, res) => {
         const flags = await Flag.findAll({
             include: [
                 { model: User, as: 'student', attributes: ['id', 'name', 'email'] },
-                { model: Exam, as: 'exam', attributes: ['id', 'title'] }
+                { 
+                    model: Exam, 
+                    as: 'exam', 
+                    attributes: ['id', 'title', 'created_by'],
+                    where: { created_by: req.user.id },
+                    required: true
+                }
             ],
             order: [['createdAt', 'DESC']]
         });

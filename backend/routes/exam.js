@@ -26,7 +26,10 @@ router.post('/', auth, async (req, res) => {
 router.get('/', auth, async (req, res) => {
     try {
         const exams = await Exam.findAll({ where: { status: 'active' } });
-        res.json(exams);
+        const submissions = await Submission.findAll({ where: { student_id: req.user.id } });
+        const submittedExamIds = submissions.map(s => s.exam_id);
+        const filteredExams = exams.filter(e => !submittedExamIds.includes(e.id.toString()) && !submittedExamIds.includes(e.id));
+        res.json(filteredExams);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -77,6 +80,15 @@ router.get('/:id', auth, async (req, res) => {
         const exam = await Exam.findByPk(req.params.id);
         if (!exam)
             return res.status(404).json({ error: 'Exam not found' });
+            
+        if (req.user.role === 'student') {
+            const submission = await Submission.findOne({
+                where: { student_id: req.user.id, exam_id: req.params.id }
+            });
+            if (submission) {
+                return res.status(403).json({ error: 'You have already submitted this exam' });
+            }
+        }
         res.json(exam);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -91,6 +103,13 @@ router.post('/:id/submit', auth, async (req, res) => {
         const exam = await Exam.findByPk(req.params.id);
         if (!exam)
             return res.status(404).json({ error: 'Exam not found' });
+
+        const existingSubmission = await Submission.findOne({
+            where: { student_id: req.user.id, exam_id: req.params.id }
+        });
+        if (existingSubmission) {
+            return res.status(400).json({ error: 'You have already submitted this exam' });
+        }
 
         // Auto grade
         const questions      = exam.questions;
