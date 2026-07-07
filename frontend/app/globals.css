@@ -142,3 +142,24 @@
 .alert-pulse {
   animation: pulse-red 1s ease infinite;
 }
+
+
+.glass-panel {
+    background    : rgba(15, 23, 42, 0.6);
+    border        : 1px solid rgba(51, 65, 85, 0.5);
+    backdrop-filter: blur(12px);
+}
+
+.glass-card {
+    background    : rgba(15, 23, 42, 0.4);
+    border        : 1px solid rgba(51, 65, 85, 0.4);
+    backdrop-filter: blur(8px);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+    display: none;
+}
