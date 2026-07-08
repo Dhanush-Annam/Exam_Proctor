@@ -41,10 +41,85 @@ interface ProctorSession {
     reason?: string;
 }
 
+interface Toast {
+    id: string;
+    message: string;
+    type: 'success' | 'info' | 'warning' | 'error';
+}
+
+function getBrowserInfo() {
+    if (typeof window === 'undefined') return { name: 'Unknown', version: '' };
+    const ua = navigator.userAgent;
+    let tem;
+    let M = ua.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
+    if (/trident/i.test(M[1])) {
+        tem = /\brv[ :]+(\d+)/g.exec(ua) || [];
+        return { name: 'IE', version: tem[1] || '' };
+    }
+    if (M[1] === 'Chrome') {
+        tem = ua.match(/\b(OPR|Edge)\/(\d+)/);
+        if (tem != null) return { name: tem[1].replace('OPR', 'Opera'), version: tem[2] };
+    }
+    M = M[2] ? [M[1], M[2]] : [navigator.appName, navigator.appVersion, '-?'];
+    if ((tem = ua.match(/version\/(\d+)/i)) != null) M.splice(1, 1, tem[1]);
+    return { name: M[0], version: M[1] };
+}
+
 export default function DashboardPage({ params }: DashboardPageProps) {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<'exams' | 'create' | 'sessions'>('exams');
+    const [toasts, setToasts] = useState<Toast[]>([]);
+    const [realMetadata, setRealMetadata] = useState<{
+        ip: string;
+        location: string;
+        browser: string;
+        cpuCores: number;
+        ramGb: number;
+    } | null>(null);
+
+    const showToast = (message: string, type: Toast['type'] = 'info') => {
+        const id = Math.random().toString(36).substring(2, 9);
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 4000);
+    };
+
+    // Load real client system metadata
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        
+        const browserInfo = getBrowserInfo();
+        const cores = navigator.hardwareConcurrency || 4;
+        const ram = (navigator as any).deviceMemory || 8;
+        
+        setRealMetadata({
+            ip: 'Fetching...',
+            location: 'Fetching...',
+            browser: `${browserInfo.name} v${browserInfo.version}`,
+            cpuCores: cores,
+            ramGb: ram
+        });
+        
+        fetch('https://ipapi.co/json/')
+            .then(res => res.json())
+            .then(data => {
+                setRealMetadata(prev => prev ? {
+                    ...prev,
+                    ip: data.ip || '127.0.0.1',
+                    location: data.city && data.region ? `${data.city}, ${data.region}, ${data.country_code}` : 'Local Network'
+                } : null);
+            })
+            .catch(err => {
+                console.error('Failed to load geo-IP metadata:', err);
+                setRealMetadata(prev => prev ? {
+                    ...prev,
+                    ip: '127.0.0.1',
+                    location: 'Localhost / Offline'
+                } : null);
+            });
+    }, []);
 
     // Data states
     const [exams, setExams] = useState<Exam[]>([]);
@@ -268,14 +343,77 @@ export default function DashboardPage({ params }: DashboardPageProps) {
         router.push('/login');
     };
 
-    const handleActionDismiss = (e: React.MouseEvent, alertName: string) => {
+    const handleActionDismiss = (e: React.MouseEvent, alertName: string, flagId?: string, index?: number) => {
         e.stopPropagation();
-        alert(`Alert "${alertName}" has been dismissed.`);
+        if (!selectedSession) return;
+
+        const updatedFlags = selectedSession.flags.filter((flag, idx) => {
+            if (flagId && flag.id) return flag.id !== flagId;
+            return idx !== index;
+        });
+
+        const updatedSession = {
+            ...selectedSession,
+            flags: updatedFlags,
+            flagsCount: updatedFlags.length,
+            latestFlagAt: updatedFlags.length > 0 ? updatedFlags[0].createdAt : ''
+        };
+
+        // Recalculate session-level verdict
+        const hasMultipleFaces = updatedFlags.some(f => f.alert_type === 'MULTIPLE_FACES');
+        const hasTabSwitch = updatedFlags.some(f => f.alert_type === 'TAB_SWITCH');
+        
+        if (updatedFlags.length >= 5 || hasMultipleFaces) {
+            updatedSession.verdict = 'CRITICAL' as const;
+            updatedSession.reason = 'Multiple serious violations detected including face or tab events.';
+        } else if (updatedFlags.length >= 2 || hasTabSwitch) {
+            updatedSession.verdict = 'SUSPICIOUS' as const;
+            updatedSession.reason = 'Some suspicious activity detected — manual review recommended.';
+        } else {
+            updatedSession.verdict = 'NORMAL' as const;
+            updatedSession.reason = updatedFlags.length === 1
+                ? `Normal session activity with a single alert (${updatedFlags[0].alert_type.replace(/_/g, ' ').toLowerCase()}).`
+                : 'Normal session activity with minimal flags.';
+        }
+
+        setSelectedSession(updatedSession);
+        setSessions(prev => prev.map(s => s.session_id === selectedSession.session_id ? updatedSession : s));
+        showToast(`Alert "${alertName.replace(/_/g, ' ')}" has been dismissed.`, 'success');
     };
 
-    const handleActionFlag = (e: React.MouseEvent, action: string) => {
+    const handleActionFlag = (e: React.MouseEvent, action: string, flagId?: string, index?: number) => {
         e.stopPropagation();
-        alert(`Action: ${action} confirmed for this session.`);
+        if (!selectedSession) return;
+
+        const updatedFlags = selectedSession.flags.map((flag, idx) => {
+            const matches = flagId && flag.id ? flag.id === flagId : idx === index;
+            if (matches) {
+                return {
+                    ...flag,
+                    isConfirmed: !flag.isConfirmed
+                };
+            }
+            return flag;
+        });
+
+        const isNowConfirmed = updatedFlags.find((flag, idx) => {
+            const matches = flagId && flag.id ? flag.id === flagId : idx === index;
+            return matches;
+        })?.isConfirmed;
+
+        const updatedSession = {
+            ...selectedSession,
+            flags: updatedFlags
+        };
+
+        setSelectedSession(updatedSession);
+        setSessions(prev => prev.map(s => s.session_id === selectedSession.session_id ? updatedSession : s));
+
+        if (isNowConfirmed) {
+            showToast(`Violation "${action}" confirmed for this session.`, 'warning');
+        } else {
+            showToast(`Violation status cleared.`, 'info');
+        }
     };
 
     return (
@@ -770,7 +908,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                                                 </span>
                                                             </div>
                                                             <div className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1 md:justify-end">
-                                                                ⏱ {new Date(session.latestFlagAt).toLocaleString()}
+                                                                ⏱ {session.latestFlagAt ? new Date(session.latestFlagAt).toLocaleString() : 'No flags yet'}
                                                             </div>
                                                         </div>
                                                         <div className="w-8 h-8 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-center text-slate-400 group-hover:scale-105 transition duration-200">
@@ -857,7 +995,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                 const hashValue = getHash(selectedSession.session_id);
                 
                 // IP Address
-                const ipAddress = `192.168.1.${(hashValue % 253) + 2}`;
+                const ipAddress = realMetadata?.ip && realMetadata.ip !== 'Fetching...' ? realMetadata.ip : `192.168.1.${(hashValue % 253) + 2}`;
 
                 // Location
                 const cities = [
@@ -865,11 +1003,11 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                     'Chicago, IL, US', 'London, UK', 'Mumbai, IN', 'Bangalore, IN', 
                     'Toronto, CA', 'Sydney, AU', 'Berlin, DE'
                 ];
-                const location = cities[hashValue % cities.length];
+                const location = realMetadata?.location && realMetadata.location !== 'Fetching...' ? realMetadata.location : cities[hashValue % cities.length];
 
                 // Browser
                 const browserVersions = ['Chrome v124.0.5', 'Firefox v125.1.0', 'Safari v17.4.2', 'Edge v123.0.1'];
-                const browserAuth = browserVersions[hashValue % browserVersions.length];
+                const browserAuth = realMetadata?.browser || browserVersions[hashValue % browserVersions.length];
 
                 // Connection
                 const networkStrength = `${88 + (hashValue % 12)}%`;
@@ -877,8 +1015,16 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                 // System loads
                 const hasDevTools = selectedSession.flags.some(f => f.alert_type === 'DEVTOOLS_OPENED');
                 const hasTabSwitch = selectedSession.flags.some(f => f.alert_type === 'TAB_SWITCH');
-                const cpuLoad = hasDevTools ? 81 : 24 + (hashValue % 18);
-                const ramUsage = hasDevTools ? '6.2 GB' : `${(2.8 + (hashValue % 12) / 10).toFixed(1)} GB`;
+                
+                const cpuCores = realMetadata?.cpuCores || 4;
+                const totalRamGb = realMetadata?.ramGb || 8;
+                
+                const cpuLoad = hasDevTools ? 65 + (hashValue % 10) : 15 + (hashValue % 15);
+                const ramPercent = hasDevTools ? 0.68 : 0.25 + (hashValue % 10) / 100;
+                const ramUsageVal = (totalRamGb * ramPercent).toFixed(1);
+                const ramUsage = `${ramUsageVal} GB`;
+                const totalRam = `${totalRamGb} GB`;
+                
                 const cpuColor = cpuLoad > 70 ? 'bg-amber-500' : 'bg-emerald-500';
                 const cpuTextColor = cpuLoad > 70 ? 'text-amber-400' : 'text-emerald-400';
 
@@ -894,7 +1040,8 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                 ];
 
                 // Dynamic timeline start/durations
-                const flagTimes = selectedSession.flags.map(f => new Date(f.createdAt).getTime()).sort();
+                const flagsArray = selectedSession.flags || [];
+                const flagTimes = flagsArray.map(f => new Date(f.createdAt || Date.now()).getTime()).sort((a, b) => a - b);
                 const minTime = flagTimes[0] || Date.now();
                 const maxTime = flagTimes[flagTimes.length - 1] || Date.now();
                 const sessionDurationMs = Math.max(5 * 60 * 1000, maxTime - minTime + 2 * 60 * 1000); 
@@ -1080,8 +1227,8 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                                     <div className={`h-full rounded-full ${cpuColor}`} style={{ width: `${cpuLoad}%` }}></div>
                                                 </div>
                                                 <div className="flex justify-between text-[8px] text-slate-400 font-mono">
-                                                    <span className={cpuTextColor}>CPU: {cpuLoad}%</span>
-                                                    <span>RAM: {ramUsage}</span>
+                                                    <span className={cpuTextColor}>CPU: {cpuLoad}% ({cpuCores} Cores)</span>
+                                                    <span>RAM: {ramUsage} / {totalRam}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -1165,20 +1312,22 @@ export default function DashboardPage({ params }: DashboardPageProps) {
 
                                                             <div className="flex gap-2 pt-1.5 border-t border-outline-variant/10">
                                                                 <button
-                                                                    onClick={(e) => handleActionDismiss(e, flag.alert_type)}
+                                                                    onClick={(e) => handleActionDismiss(e, flag.alert_type, flag.id, idx)}
                                                                     className="flex-1 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer"
                                                                 >
                                                                     Dismiss
                                                                 </button>
                                                                 <button
-                                                                    onClick={(e) => handleActionFlag(e, isCritical ? 'Confirm Violation' : 'Flag Session')}
+                                                                    onClick={(e) => handleActionFlag(e, isCritical ? 'Confirm Violation' : 'Flag Session', flag.id, idx)}
                                                                     className={`flex-1 py-1 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
-                                                                        isCritical
-                                                                            ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white'
-                                                                            : 'bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-slate-950'
+                                                                        flag.isConfirmed
+                                                                            ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400 hover:bg-emerald-600 hover:text-white'
+                                                                            : isCritical
+                                                                                ? 'bg-red-500/10 border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white'
+                                                                                : 'bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-slate-950'
                                                                     }`}
                                                                 >
-                                                                    {isCritical ? 'Confirm' : 'Flag'}
+                                                                    {flag.isConfirmed ? '✓ Confirmed' : isCritical ? 'Confirm' : 'Flag'}
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -1208,6 +1357,39 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                     </div>
                 );
             })()}
+
+            {/* Toast Notifications */}
+            <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+                {toasts.map(toast => {
+                    const bgColors = {
+                        success: 'bg-emerald-950/80 border-emerald-500/30 text-emerald-400',
+                        info: 'bg-indigo-950/80 border-indigo-500/30 text-indigo-400',
+                        warning: 'bg-amber-950/80 border-amber-500/30 text-amber-400',
+                        error: 'bg-red-950/80 border-red-500/30 text-red-400'
+                    };
+                    const icons = {
+                        success: '✓',
+                        info: 'ℹ',
+                        warning: '⚠',
+                        error: '✖'
+                    };
+                    return (
+                        <div
+                            key={toast.id}
+                            className={`p-4 rounded-xl border backdrop-blur-xl shadow-2xl flex items-start gap-3 pointer-events-auto transition duration-300 ${bgColors[toast.type]}`}
+                        >
+                            <span className="font-bold text-sm leading-none mt-0.5">{icons[toast.type]}</span>
+                            <div className="flex-1 text-xs font-semibold">{toast.message}</div>
+                            <button
+                                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                                className="text-[10px] opacity-60 hover:opacity-100 transition-opacity leading-none cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
