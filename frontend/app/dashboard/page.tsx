@@ -182,6 +182,11 @@ export default function DashboardPage({ params }: DashboardPageProps) {
 
     // Active session details modal state (Screen 4 Review Panel)
     const [selectedSession, setSelectedSession] = useState<ProctorSession | null>(null);
+    const [selectedFlag, setSelectedFlag] = useState<any | null>(null);
+
+    useEffect(() => {
+        setSelectedFlag(null);
+    }, [selectedSession?.session_id]);
 
     // Initial check & load
     useEffect(() => {
@@ -209,7 +214,18 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                 getProctorSessions()
             ]);
             setExams(examsRes.data);
-            setSessions(sessionsRes.data);
+            const newSessions = sessionsRes.data;
+            setSessions(newSessions);
+
+            // Sync the active selectedSession if it is currently open
+            if (selectedSession) {
+                const updated = newSessions.find(
+                    (s: any) => s.session_id === selectedSession.session_id
+                );
+                if (updated) {
+                    setSelectedSession(updated);
+                }
+            }
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to load dashboard data');
         } finally {
@@ -1115,17 +1131,13 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                 </div>
                                 
                                 <div className="flex items-center gap-3">
-                                    <div className="hidden sm:flex items-center gap-4 bg-slate-950 border border-slate-800 p-2 rounded-xl text-xs">
-                                        <div className="text-center px-2">
-                                            <p className="text-[10px] text-slate-500 uppercase font-bold">Elapsed</p>
-                                            <p className="font-bold text-slate-200">{elapsedTime}</p>
-                                        </div>
-                                        <div className="w-px h-6 bg-slate-800" />
-                                        <div className="text-center px-2">
-                                            <p className="text-[10px] text-slate-500 uppercase font-bold">Connection</p>
-                                            <p className="font-bold text-emerald-400">📶 {networkStrength}</p>
-                                        </div>
-                                    </div>
+                                    <button
+                                        onClick={loadDashboardData}
+                                        className="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition duration-200 cursor-pointer mr-1"
+                                        title="Refresh Session Data"
+                                    >
+                                        ↻
+                                    </button>
 
                                     <button
                                         onClick={() => setSelectedSession(null)}
@@ -1140,7 +1152,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                             <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
                                 
                                 {/* LEFT COLUMN: Simulated Video & Telemetry */}
-                                <div className="lg:col-span-8 flex flex-col gap-4 overflow-y-auto pr-1">
+                                <div className="lg:col-span-7 flex flex-col gap-4 overflow-y-auto pr-1">
                                     {/* simulated video card */}
                                     <div className="glass-card rounded-xl overflow-hidden flex flex-col relative grow min-h-[300px] bg-black">
                                         <div className="absolute top-3 right-3 z-10 flex gap-2">
@@ -1152,17 +1164,39 @@ export default function DashboardPage({ params }: DashboardPageProps) {
 
                                         {/* Video simulation placeholder */}
                                         <div className="grow relative bg-slate-950 flex items-center justify-center overflow-hidden">
-                                            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMwZjE3MmEiLz48Y2lyY2xlIGN4PSI1MCUiIGN5PSI0MCUiIHI9IjM1IiBmaWxsPSIjMWUyOTNiIi8+PHBhdGggZD0iTSAxMCAxODAgQyAzMCAxMTAgMTEwIDExMCAxMzAgMTgwIiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+')] opacity-60"></div>
-                                            <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-size-[100%_4px] pointer-events-none opacity-30"></div>
-                                            
-                                            {/* Dynamic Bounding box vector simulation */}
-                                            <div className={`absolute border rounded-md w-36 h-36 flex flex-col justify-between p-1.5 shadow-[0_0_15px_rgba(245,158,11,0.1)] ${gazeBorderColor}`}>
-                                                <span className={`text-[9px] font-mono bg-slate-950/80 px-1.5 py-0.5 rounded self-start ${gazeTextColor}`}>{gazeLabel}</span>
-                                                <div className="flex justify-between w-full">
-                                                    <div className="w-2 h-2 border-b border-l border-slate-550/40"></div>
-                                                    <div className="w-2 h-2 border-b border-r border-slate-550/40"></div>
-                                                </div>
-                                            </div>
+                                            {selectedFlag && selectedFlag.image_path ? (
+                                                <>
+                                                    <img 
+                                                        src={`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/proctor/static/${selectedFlag.image_path.replace(/\\/g, '/')}`} 
+                                                        alt={selectedFlag.alert_type}
+                                                        className="absolute inset-0 w-full h-full object-contain"
+                                                    />
+                                                    {/* Deselect overlay button */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedFlag(null);
+                                                        }}
+                                                        className="absolute bottom-3 right-3 bg-slate-950/80 hover:bg-slate-950 text-white text-[10px] px-2 py-1 rounded border border-slate-800 backdrop-blur-md cursor-pointer transition duration-200"
+                                                    >
+                                                        📺 Return to Live View
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiMwZjE3MmEiLz48Y2lyY2xlIGN4PSI1MCUiIGN5PSI0MCUiIHI9IjM1IiBmaWxsPSIjMWUyOTNiIi8+PHBhdGggZD0iTSAxMCAxODAgQyAzMCAxMTAgMTEwIDExMCAxMzAgMTgwIiBmaWxsPSIjMWUyOTNiIi8+PC9zdmc+')] opacity-60"></div>
+                                                    <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.25)_50%)] bg-size-[100%_4px] pointer-events-none opacity-30"></div>
+                                                    
+                                                    {/* Dynamic Bounding box vector simulation */}
+                                                    <div className={`absolute border rounded-md w-36 h-36 flex flex-col justify-between p-1.5 shadow-[0_0_15px_rgba(245,158,11,0.1)] ${gazeBorderColor}`}>
+                                                        <span className={`text-[9px] font-mono bg-slate-950/80 px-1.5 py-0.5 rounded self-start ${gazeTextColor}`}>{gazeLabel}</span>
+                                                        <div className="flex justify-between w-full">
+                                                            <div className="w-2 h-2 border-b border-l border-slate-550/40"></div>
+                                                            <div className="w-2 h-2 border-b border-r border-slate-550/40"></div>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
 
                                         {/* Video Controls & Timeline slider */}
@@ -1179,7 +1213,8 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                                     return (
                                                         <div 
                                                             key={flag.id || fIdx}
-                                                            className={`absolute top-0 bottom-0 w-2 cursor-help transition-all ${
+                                                            onClick={() => setSelectedFlag({ ...flag, _idx: fIdx, _session_id: selectedSession.session_id })}
+                                                            className={`absolute top-0 bottom-0 w-2 cursor-pointer transition-all ${
                                                                 isCritical ? 'bg-red-500 hover:scale-x-125 shadow-[0_0_8px_rgba(239,68,68,0.7)]' : 'bg-amber-500 hover:scale-x-125 shadow-[0_0_8px_rgba(245,158,11,0.7)]'
                                                             }`}
                                                             style={{ left: `${Math.min(99.5, Math.max(0, percent))}%` }}
@@ -1198,64 +1233,14 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                             </div>
                                         </div>
                                     </div>
-
-                                    {/* Telemetry stats grid */}
-                                    <div className="grid grid-cols-3 gap-4 shrink-0">
-                                        <div className="glass-card rounded-xl p-4 flex flex-col justify-between">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Audio Feed</span>
-                                                <span className="text-[9px] font-bold text-emerald-400 font-mono">Healthy</span>
-                                            </div>
-                                            <div className="flex items-end gap-1.5 h-6">
-                                                {audioHeights.map((h, aIdx) => (
-                                                    <div 
-                                                        key={aIdx} 
-                                                        className="w-full bg-emerald-500/80 rounded-sm" 
-                                                        style={{ height: `${h}%` }}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="glass-card rounded-xl p-4 flex flex-col justify-between">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">System Load</span>
-                                                <span className={`text-[9px] font-bold font-mono ${cpuTextColor}`}>{cpuLoad > 70 ? 'Elevated' : 'Normal'}</span>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
-                                                    <div className={`h-full rounded-full ${cpuColor}`} style={{ width: `${cpuLoad}%` }}></div>
-                                                </div>
-                                                <div className="flex justify-between text-[8px] text-slate-400 font-mono">
-                                                    <span className={cpuTextColor}>CPU: {cpuLoad}% ({cpuCores} Cores)</span>
-                                                    <span>RAM: {ramUsage} / {totalRam}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="glass-card rounded-xl p-4 flex flex-col justify-between">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Secure Processes</span>
-                                                <span className="text-[9px] font-bold text-emerald-400 font-mono">Locked</span>
-                                            </div>
-                                            <div className="space-y-0.5 text-[8px] font-mono text-slate-400 truncate">
-                                                {processList.map((proc, pIdx) => (
-                                                    <div key={pIdx} className="flex justify-between">
-                                                        <span>{proc.name}</span>
-                                                        <span className={proc.color}>{proc.status}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
 
                                 {/* RIGHT COLUMN: Event Timeline & Session Data */}
-                                <div className="lg:col-span-4 flex flex-col gap-4 overflow-y-auto pr-1">
+                                <div className="lg:col-span-5 flex flex-col gap-4 overflow-y-auto pr-1">
                                     {/* Metadata Card */}
                                     <div className="glass-card rounded-xl p-4 border-t-2 border-t-indigo-500 shrink-0">
                                         <h3 className="font-bold text-slate-200 text-xs mb-3 uppercase tracking-wider">Session Details</h3>
-                                        <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-xs">
+                                        <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-xs">
                                             <div>
                                                 <p className="text-[9px] font-bold text-slate-500 uppercase">Browser Authenticator</p>
                                                 <p className="font-semibold text-slate-350">{browserAuth}</p>
@@ -1266,7 +1251,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                             </div>
                                             <div>
                                                 <p className="text-[9px] font-bold text-slate-500 uppercase">IP Address</p>
-                                                <p className="font-mono text-[10px] text-slate-400">{ipAddress}</p>
+                                                <p className="font-mono text-[9px] text-slate-350">{ipAddress}</p>
                                             </div>
                                             <div>
                                                 <p className="text-[9px] font-bold text-slate-500 uppercase">Geolocation</p>
@@ -1289,9 +1274,18 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                                 selectedSession.flags.map((flag, idx) => {
                                                     const flagVerdict = flag.ai_verdict || 'SUSPICIOUS';
                                                     const isCritical = flagVerdict === 'HIGH_RISK';
+                                                    const isSelected = selectedFlag && (selectedFlag.id === flag.id || (idx === selectedFlag._idx && selectedSession.session_id === selectedFlag._session_id));
 
                                                     return (
-                                                        <div key={flag.id || idx} className="border border-outline-variant/20 rounded-xl p-3 bg-slate-950/45 space-y-3 relative group">
+                                                        <div 
+                                                            key={flag.id || idx} 
+                                                            onClick={() => setSelectedFlag({ ...flag, _idx: idx, _session_id: selectedSession.session_id })}
+                                                            className={`border rounded-xl p-3 space-y-3 relative group cursor-pointer transition-all ${
+                                                                isSelected 
+                                                                    ? 'border-indigo-500 bg-indigo-500/5 shadow-[0_0_12px_rgba(99,102,241,0.15)]' 
+                                                                    : 'border-outline-variant/20 bg-slate-950/45 hover:border-slate-800'
+                                                            }`}
+                                                        >
                                                             <div className="absolute left-[-21px] top-4 w-2 h-2 rounded-full bg-slate-700 z-10 border border-slate-950" />
                                                             <div className="flex justify-between items-center">
                                                                 <div className="flex items-center gap-1.5">
@@ -1302,6 +1296,9 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                                                     }`}>
                                                                         {flag.alert_type.replace(/_/g, ' ')}
                                                                     </span>
+                                                                    {flag.image_path && (
+                                                                        <span className="text-[9px] font-bold text-slate-500 flex items-center gap-0.5">📷 Image</span>
+                                                                    )}
                                                                 </div>
                                                                 <span className="text-[9.5px] font-mono text-slate-500">{new Date(flag.createdAt || flag.timestamp || Date.now()).toLocaleTimeString()}</span>
                                                             </div>
@@ -1312,13 +1309,19 @@ export default function DashboardPage({ params }: DashboardPageProps) {
 
                                                             <div className="flex gap-2 pt-1.5 border-t border-outline-variant/10">
                                                                 <button
-                                                                    onClick={(e) => handleActionDismiss(e, flag.alert_type, flag.id, idx)}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleActionDismiss(e, flag.alert_type, flag.id, idx);
+                                                                    }}
                                                                     className="flex-1 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white py-1 rounded text-[10px] font-semibold transition-colors cursor-pointer"
                                                                 >
                                                                     Dismiss
                                                                 </button>
                                                                 <button
-                                                                    onClick={(e) => handleActionFlag(e, isCritical ? 'Confirm Violation' : 'Flag Session', flag.id, idx)}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleActionFlag(e, isCritical ? 'Confirm Violation' : 'Flag Session', flag.id, idx);
+                                                                    }}
                                                                     className={`flex-1 py-1 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
                                                                         flag.isConfirmed
                                                                             ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400 hover:bg-emerald-600 hover:text-white'
@@ -1342,24 +1345,13 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Modal Footer */}
-                            <div className="border-t border-slate-800 pt-4 mt-4 flex justify-between items-center">
-                                <span className="text-[10px] font-mono text-slate-500">Secure Live Stream Encrypted</span>
-                                <button
-                                    onClick={() => setSelectedSession(null)}
-                                    className="px-6 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition duration-200 cursor-pointer"
-                                >
-                                    Done
-                                </button>
-                            </div>
                         </div>
                     </div>
                 );
             })()}
 
             {/* Toast Notifications */}
-            <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+            <div className="fixed bottom-5 right-5 z-9999 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
                 {toasts.map(toast => {
                     const bgColors = {
                         success: 'bg-emerald-950/80 border-emerald-500/30 text-emerald-400',
