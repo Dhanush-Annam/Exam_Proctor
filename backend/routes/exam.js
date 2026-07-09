@@ -1,4 +1,5 @@
 const express = require('express');
+const axios   = require('axios');
 const Exam    = require('../models/Exam');
 const Submission = require('../models/Submission');
 const Flag       = require('../models/Flag');
@@ -84,7 +85,11 @@ router.get('/:id', auth, async (req, res) => {
         if (!exam)
             return res.status(404).json({ error: 'Exam not found' });
             
-        if (req.user.role === 'student') {
+        if (req.user.role === 'examiner') {
+            if (exam.created_by !== req.user.id) {
+                return res.status(403).json({ error: 'Unauthorized to view this exam' });
+            }
+        } else if (req.user.role === 'student') {
             const submission = await Submission.findOne({
                 where: { student_id: req.user.id, exam_id: req.params.id }
             });
@@ -140,6 +145,37 @@ router.post('/:id/submit', auth, async (req, res) => {
             total_flags
         });
 
+        // Trigger AI Proctoring Session End and Review in the background (non-blocking for student)
+        if (session_id && process.env.AI_SERVICE_URL) {
+            axios.post(`${process.env.AI_SERVICE_URL}/session/${session_id}/end`)
+                .then(async (aiResponse) => {
+                    const report = aiResponse.data;
+                    if (report && report.flags) {
+                        // Update flags in database with Gemini verdicts
+                        for (const flag of report.flags) {
+                            if (flag.image_path) {
+                                await Flag.update(
+                                    {
+                                        ai_verdict: flag.ai_verdict,
+                                        ai_reason: flag.ai_reason
+                                    },
+                                    {
+                                        where: {
+                                            session_id,
+                                            image_path: flag.image_path
+                                        }
+                                    }
+                                );
+                            }
+                        }
+                        console.log(`Successfully completed automated AI review for session ${session_id}`);
+                    }
+                })
+                .catch((err) => {
+                    console.error(`Failed to automatically end proctoring session/review for ${session_id}:`, err.message);
+                });
+        }
+
         res.json({
             score,
             correct_answers,
@@ -157,6 +193,13 @@ router.get('/:id/submissions', auth, async (req, res) => {
     try {
         if (req.user.role !== 'examiner')
             return res.status(403).json({ error: 'Examiners only' });
+
+        const exam = await Exam.findByPk(req.params.id);
+        if (!exam)
+            return res.status(404).json({ error: 'Exam not found' });
+
+        if (exam.created_by !== req.user.id)
+            return res.status(403).json({ error: 'Unauthorized to view submissions for this exam' });
 
         const submissions = await Submission.findAll({
             where: { exam_id: req.params.id }

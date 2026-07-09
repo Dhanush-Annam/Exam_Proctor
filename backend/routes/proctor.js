@@ -143,6 +143,10 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
             const detailStr = `gaze=${result.gaze} signal=${result.signal}`;
             const { ai_verdict, ai_reason } = getFlagAiVerdict(alertType, detailStr);
 
+            // Find matching saved flag from AI service to get the image_path
+            const matchingFlag = result.saved_flags && result.saved_flags.find(f => f.alert_type === alertType);
+            const imagePath = matchingFlag ? matchingFlag.image_path : null;
+
             await Flag.create({
                 session_id,
                 student_id : req.user.id,
@@ -151,6 +155,7 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
                 detail     : detailStr,
                 ear_value  : result.ear,
                 yaw_degrees: result.yaw,
+                image_path : imagePath,
                 ai_verdict,
                 ai_reason
             });
@@ -188,8 +193,16 @@ router.get('/sessions', auth, async (req, res) => {
         if (req.user.role !== 'examiner')
             return res.status(403).json({ error: 'Examiners only' });
 
-        // Get all flags grouped by session
+        // Get exams created by this examiner
+        const myExams = await Exam.findAll({
+            where: { created_by: req.user.id },
+            attributes: ['id']
+        });
+        const myExamIds = myExams.map(e => e.id);
+
+        // Get flags grouped by session, only for this examiner's exams
         const flags = await Flag.findAll({
+            where: { exam_id: { [Op.in]: myExamIds } },
             order: [['createdAt', 'DESC']]
         });
 
@@ -258,6 +271,19 @@ router.get('/flags/:session_id', auth, async (req, res) => {
         const flags = await Flag.findAll({
             where: { session_id: req.params.session_id }
         });
+
+        if (flags.length > 0) {
+            if (req.user.role === 'examiner') {
+                const exam = await Exam.findByPk(flags[0].exam_id);
+                if (exam && exam.created_by !== req.user.id) {
+                    return res.status(403).json({ error: 'Unauthorized to view flags for this session' });
+                }
+            } else if (req.user.role === 'student') {
+                if (flags[0].student_id !== req.user.id) {
+                    return res.status(403).json({ error: 'Unauthorized to view flags for this session' });
+                }
+            }
+        }
         res.json(flags);
     } catch (err) {
         res.status(500).json({ error: err.message });
