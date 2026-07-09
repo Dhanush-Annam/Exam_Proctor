@@ -1,8 +1,14 @@
 import os
 import warnings
+import json
+from pathlib import Path
+import google.generativeai as genai
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['GLOG_minloglevel']      = '3'
 warnings.filterwarnings('ignore')
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import cv2
 import numpy as np
@@ -15,6 +21,7 @@ from core.detector  import FaceDetector
 from core.ear       import EARDetector
 from core.gaze      import GazeDetector
 from core.flagging  import FlagManager
+from review import process_session, GEMINI_API_KEY
 
 # ── App ──────────────────────────────────────────────────
 app = FastAPI(
@@ -70,6 +77,8 @@ async def analyze(
     alerts     = []
     flag_saved = False
 
+    saved_flags = []
+
     # ── Face Count ───────────────────────────────────────
     face_count = face_detector.count_faces(img)
 
@@ -83,6 +92,7 @@ async def analyze(
                                   f"EAR={ear:.2f}", ear=ear)
         if entry:
             flag_saved = True
+            saved_flags.append(entry)
 
     # ── Gaze ─────────────────────────────────────────────
     gaze, signal, iris_gaze, head_gaze, yaw, pitch = \
@@ -94,6 +104,7 @@ async def analyze(
                                   f"signal={signal}", yaw=yaw, pitch=pitch)
         if entry:
             flag_saved = True
+            saved_flags.append(entry)
 
     # ── Face Alerts ───────────────────────────────────────
     if face_count == 0:
@@ -101,12 +112,14 @@ async def analyze(
         entry = flag_manager.save(img, "NO_FACE", "no face in frame")
         if entry:
             flag_saved = True
+            saved_flags.append(entry)
     elif face_count > 1:
         alerts.append("MULTIPLE_FACES")
         entry = flag_manager.save(img, "MULTIPLE_FACES",
                                   f"{face_count} faces")
         if entry:
             flag_saved = True
+            saved_flags.append(entry)
 
     return {
         "session_id" : session_id,
@@ -120,7 +133,8 @@ async def analyze(
         "pitch"      : round(pitch, 2) if pitch else None,
         "alerts"     : alerts,
         "flag_saved" : flag_saved,
-        "flag_count" : flag_manager.flag_counter
+        "flag_count" : flag_manager.flag_counter,
+        "saved_flags": saved_flags
     }
 
 @app.get("/session/{session_id}/report")
@@ -134,10 +148,27 @@ def get_report(session_id: str):
 
 @app.post("/session/{session_id}/end")
 def end_session(session_id: str):
+    # 1. End the active session if in memory to write the initial report
     with sessions_lock:
         session = sessions.get(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        report = session["flag_manager"].end()
-        del sessions[session_id]
-        return report
+        if session:
+            session["flag_manager"].end()
+            del sessions[session_id]
+            
+    # 2. Check if the directory and report exist
+    session_dir = Path("flags") / session_id
+    report_path = session_dir / "session_report.json"
+    if not report_path.exists():
+        raise HTTPException(status_code=404, detail="Session report not found")
+        
+    # 3. Configure Gemini and run the review script logic
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        process_session(session_dir, dry_run=False)
+    else:
+        process_session(session_dir, dry_run=True)
+        
+    # 4. Load the updated report and return it
+    with open(report_path, "r") as f:
+        final_report = json.load(f)
+    return final_report
