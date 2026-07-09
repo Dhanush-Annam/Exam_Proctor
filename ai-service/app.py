@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import threading
 from datetime import datetime
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
 from core.detector  import FaceDetector
@@ -146,8 +146,32 @@ def get_report(session_id: str):
     with open(path) as f:
         return JSONResponse(content=json.load(f))
 
+def run_review_and_callback(session_dir: Path, session_id: str):
+    import urllib.request
+    # 3. Configure Gemini and run the review script logic
+    if GEMINI_API_KEY:
+        genai.configure(api_key=GEMINI_API_KEY)
+        report = process_session(session_dir, dry_run=False)
+    else:
+        report = process_session(session_dir, dry_run=True)
+        
+    # 4. Callback to backend
+    try:
+        backend_url = os.environ.get("BACKEND_URL", "http://localhost:3001")
+        url = f"{backend_url}/api/proctor/session/{session_id}/review-complete"
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(report).encode('utf-8'),
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as response:
+            print(f"Callback response status: {response.status}")
+    except Exception as e:
+        print(f"Failed to send review callback to backend: {e}")
+
 @app.post("/session/{session_id}/end")
-def end_session(session_id: str):
+def end_session(session_id: str, background_tasks: BackgroundTasks):
     # 1. End the active session if in memory to write the initial report
     with sessions_lock:
         session = sessions.get(session_id)
@@ -161,14 +185,7 @@ def end_session(session_id: str):
     if not report_path.exists():
         raise HTTPException(status_code=404, detail="Session report not found")
         
-    # 3. Configure Gemini and run the review script logic
-    if GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
-        process_session(session_dir, dry_run=False)
-    else:
-        process_session(session_dir, dry_run=True)
-        
-    # 4. Load the updated report and return it
-    with open(report_path, "r") as f:
-        final_report = json.load(f)
-    return final_report
+    # Schedule the Gemini review in the background
+    background_tasks.add_task(run_review_and_callback, session_dir, session_id)
+    
+    return {"status": "processing", "message": "Post-exam AI review scheduled in background."}
