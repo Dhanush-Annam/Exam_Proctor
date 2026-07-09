@@ -6,6 +6,7 @@ const upload  = require('../middleware/upload');
 const Flag    = require('../models/Flag');
 const User    = require('../models/User');
 const Exam    = require('../models/Exam');
+const Submission = require('../models/Submission');
 const sequelize  = require('../models/index');
 const { Op }     = require('sequelize');
 const router  = express.Router();
@@ -137,51 +138,32 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
 
         const result = aiResponse.data;
 
-        // Save flags to PostgreSQL if any
+        // Save flags to PostgreSQL if any (processes all alerts logged)
         if (result.alerts && result.alerts.length > 0 && result.flag_saved) {
-            const alertType = result.alerts[0];
-            const detailStr = `gaze=${result.gaze} signal=${result.signal}`;
-            const { ai_verdict, ai_reason } = getFlagAiVerdict(alertType, detailStr);
+            for (const alertType of result.alerts) {
+                const detailStr = `gaze=${result.gaze} signal=${result.signal}`;
+                const { ai_verdict, ai_reason } = getFlagAiVerdict(alertType, detailStr);
 
-            // Find matching saved flag from AI service to get the image_path
-            const matchingFlag = result.saved_flags && result.saved_flags.find(f => f.alert_type === alertType);
-            const imagePath = matchingFlag ? matchingFlag.image_path : null;
+                // Find matching saved flag from AI service to get the image_path
+                const matchingFlag = result.saved_flags && result.saved_flags.find(f => f.alert_type === alertType);
+                const imagePath = matchingFlag ? matchingFlag.image_path : null;
 
-            await Flag.create({
-                session_id,
-                student_id : req.user.id,
-                exam_id,
-                alert_type : alertType,
-                detail     : detailStr,
-                ear_value  : result.ear,
-                yaw_degrees: result.yaw,
-                image_path : imagePath,
-                ai_verdict,
-                ai_reason
-            });
+                await Flag.create({
+                    session_id,
+                    student_id : req.user.id,
+                    exam_id,
+                    alert_type : alertType,
+                    detail     : detailStr,
+                    ear_value  : result.ear,
+                    yaw_degrees: result.yaw,
+                    image_path : imagePath,
+                    ai_verdict,
+                    ai_reason
+                });
+            }
         }
 
         res.json(result);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-router.post('/tab-switch', auth, async (req, res) => {
-    try {
-        const { session_id, exam_id } = req.body;
-        const { ai_verdict, ai_reason } = getFlagAiVerdict('TAB_SWITCH');
-
-        await Flag.create({
-            session_id,
-            student_id : req.user.id,
-            exam_id,
-            alert_type : 'TAB_SWITCH',
-            detail     : 'Student switched tabs during exam',
-            ai_verdict,
-            ai_reason
-        });
-        res.json({ logged: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -200,66 +182,98 @@ router.get('/sessions', auth, async (req, res) => {
         });
         const myExamIds = myExams.map(e => e.id);
 
-        // Get flags grouped by session, only for this examiner's exams
-        const flags = await Flag.findAll({
+        // Get all submissions for these exams (representing all student test attempts)
+        const submissions = await Submission.findAll({
             where: { exam_id: { [Op.in]: myExamIds } },
+            include: [
+                { model: User, as: 'student', attributes: ['id', 'name', 'email'] },
+                { model: Exam, as: 'exam', attributes: ['id', 'title'] }
+            ],
+            order: [['submitted_at', 'DESC']]
+        });
+
+        const sessionIds = submissions.map(s => s.session_id);
+
+        // Get all flags for these sessions in bulk
+        const flags = await Flag.findAll({
+            where: { session_id: { [Op.in]: sessionIds } },
             order: [['createdAt', 'DESC']]
         });
 
-        // Group by session_id
-        const sessionMap = {};
+        // Group flags by session_id
+        const flagsMap = {};
         for (const flag of flags) {
             const sid = flag.session_id;
-            if (!sessionMap[sid]) {
-                // Get student info
-                const student = await User.findByPk(flag.student_id, {
-                    attributes: ['id', 'name', 'email']
-                });
-                // Get exam info
-                const exam = await Exam.findByPk(flag.exam_id, {
-                    attributes: ['id', 'title']
-                });
-
-                sessionMap[sid] = {
-                    session_id   : sid,
-                    student      : student,
-                    exam         : exam,
-                    flags        : [],
-                    flagsCount   : 0,
-                    latestFlagAt : flag.createdAt,
-                    verdict      : null,
-                    reason       : null
-                };
+            if (!flagsMap[sid]) {
+                flagsMap[sid] = [];
             }
-            sessionMap[sid].flags.push(flag);
-            sessionMap[sid].flagsCount++;
+            flagsMap[sid].push(flag);
         }
 
-        // Compute verdict per session
-        const sessions = Object.values(sessionMap).map((session) => {
-            const count = session.flagsCount;
-            const hasMultipleFaces = session.flags.some(
-                (f) => f.alert_type === 'MULTIPLE_FACES'
-            );
-            const hasTabSwitch = session.flags.some(
-                (f) => f.alert_type === 'TAB_SWITCH'
-            );
+        // Construct session objects with status determined by Gemini AI verdicts
+        const sessions = submissions.map((sub) => {
+            const sessionFlags = flagsMap[sub.session_id] || [];
+            
+            // Filter flags that are NOT false alarms
+            const activeFlags = sessionFlags.filter(f => f.ai_verdict !== 'FALSE_ALARM');
+            
+            const hasHighRisk = activeFlags.some(f => f.ai_verdict === 'HIGH_RISK');
+            const hasSuspicious = activeFlags.some(f => f.ai_verdict === 'SUSPICIOUS');
+            
+            let verdict = 'NORMAL';
+            let reason = 'Normal session activity with minimal alerts.';
 
-            if (count >= 5 || hasMultipleFaces) {
-                session.verdict = 'CRITICAL';
-                session.reason  = 'Multiple serious violations detected including face or tab events.';
-            } else if (count >= 2 || hasTabSwitch) {
-                session.verdict = 'SUSPICIOUS';
-                session.reason  = 'Some suspicious activity detected — manual review recommended.';
-            } else {
-                session.verdict = 'NORMAL';
-                session.reason  = 'Normal session activity with minimal flags.';
+            if (hasHighRisk || activeFlags.length >= 5) {
+                verdict = 'CRITICAL';
+                reason = `CRITICAL RISK: Detected ${activeFlags.filter(f => f.ai_verdict === 'HIGH_RISK').length} high-risk violation(s).`;
+            } else if (hasSuspicious || activeFlags.length >= 2) {
+                verdict = 'SUSPICIOUS';
+                reason = `SUSPICIOUS: Minor or ambiguous anomalies observed during student review.`;
             }
 
-            return session;
+            return {
+                session_id   : sub.session_id,
+                student      : sub.student,
+                exam         : sub.exam,
+                flags        : sessionFlags, // Return all flags for detailed timeline
+                flagsCount   : sessionFlags.length,
+                latestFlagAt : sessionFlags.length > 0 ? sessionFlags[0].createdAt : sub.submitted_at,
+                verdict      : verdict,
+                reason       : reason
+            };
         });
 
         res.json(sessions);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Callback webhook for FastAPI asynchronously completed review
+router.post('/session/:session_id/review-complete', async (req, res) => {
+    try {
+        const { session_id } = req.params;
+        const { flags } = req.body;
+        
+        if (flags && Array.isArray(flags)) {
+            for (const flag of flags) {
+                if (flag.image_path) {
+                    await Flag.update(
+                        {
+                            ai_verdict: flag.ai_verdict,
+                            ai_reason: flag.ai_reason
+                        },
+                        {
+                            where: {
+                                session_id,
+                                image_path: flag.image_path
+                            }
+                        }
+                    );
+                }
+            }
+        }
+        res.json({ success: true, message: 'Verdicts successfully updated' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

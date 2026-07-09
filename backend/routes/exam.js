@@ -36,6 +36,25 @@ router.get('/', auth, async (req, res) => {
     }
 });
 
+// Get student's past submissions
+router.get('/submissions/mine', auth, async (req, res) => {
+    try {
+        if (req.user.role !== 'student')
+            return res.status(403).json({ error: 'Students only' });
+            
+        const submissions = await Submission.findAll({
+            where: { student_id: req.user.id },
+            include: [
+                { model: Exam, as: 'exam', attributes: ['id', 'title', 'duration_minutes'] }
+            ],
+            order: [['submitted_at', 'DESC']]
+        });
+        res.json(submissions);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Get exams created by this examiner
 router.get('/mine', auth, async (req, res) => {
     try {
