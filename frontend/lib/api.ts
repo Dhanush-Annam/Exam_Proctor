@@ -32,6 +32,8 @@ export const updateExamStatus = (id: string, status: string) =>
     API.patch(`/api/exams/${id}/status`, { status });
 export const updateExam = (id: string, data: any) =>
     API.put(`/api/exams/${id}`, data);
+export const getMySubmissions = () =>
+    API.get('/api/exams/submissions/mine');
 
 // ── Proctor ──────────────────────────────────────────────
 export const analyzeFrame = (formData: FormData) =>

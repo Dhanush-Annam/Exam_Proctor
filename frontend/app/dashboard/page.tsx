@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getExaminerExams, createExam, updateExamStatus, getProctorSessions, updateExam } from '@/lib/api';
+import { getExaminerExams, createExam, updateExamStatus, getProctorSessions, updateExam, getSubmissions } from '@/lib/api';
 
 export interface DashboardPageProps {
     readonly params?: any;
@@ -68,7 +68,11 @@ function getBrowserInfo() {
 export default function DashboardPage({ params }: DashboardPageProps) {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState<'exams' | 'create' | 'sessions'>('exams');
+    const [activeTab, setActiveTab] = useState<'exams' | 'create' | 'sessions' | 'submissions'>('exams');
+    const [selectedSubmissionsExam, setSelectedSubmissionsExam] = useState<Exam | null>(null);
+    const [submissionsList, setSubmissionsList] = useState<any[]>([]);
+    const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+    const [inspectingSubmission, setInspectingSubmission] = useState<any | null>(null);
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [realMetadata, setRealMetadata] = useState<{
         ip: string;
@@ -300,6 +304,20 @@ export default function DashboardPage({ params }: DashboardPageProps) {
         setSuccess('');
     };
 
+    const handleViewSubmissions = async (exam: Exam) => {
+        setSelectedSubmissionsExam(exam);
+        setActiveTab('submissions');
+        setLoadingSubmissions(true);
+        try {
+            const res = await getSubmissions(exam.id);
+            setSubmissionsList(res.data);
+        } catch (err: any) {
+            showToast('Failed to load submissions', 'error');
+        } finally {
+            setLoadingSubmissions(false);
+        }
+    };
+
     const handleCreateExamSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -454,7 +472,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                         <button
                             onClick={() => { setActiveTab('exams'); setError(''); }}
                             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
-                                activeTab === 'exams'
+                                activeTab === 'exams' || activeTab === 'submissions'
                                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10'
                                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                             }`}
@@ -611,6 +629,12 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                                         className="px-3 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-300 hover:text-white rounded-lg transition duration-200 cursor-pointer"
                                                     >
                                                         Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleViewSubmissions(exam)}
+                                                        className="px-3 py-2 bg-indigo-650 hover:bg-indigo-600 text-xs font-semibold text-white rounded-lg transition duration-200 cursor-pointer"
+                                                    >
+                                                        Submissions
                                                     </button>
                                                 </div>
                                             </div>
@@ -777,6 +801,79 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                         </button>
                                     </div>
                                 </form>
+                            </div>
+                        )}
+
+                        {/* TAB 4: EXAM SUBMISSIONS DETAIL */}
+                        {activeTab === 'submissions' && selectedSubmissionsExam && (
+                            <div>
+                                <div className="mb-8 flex justify-between items-center">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => { setActiveTab('exams'); setSelectedSubmissionsExam(null); }}
+                                                className="px-3 py-1 bg-slate-900 border border-slate-800 text-xs font-bold text-slate-400 hover:text-white rounded-lg transition mr-2 cursor-pointer"
+                                            >
+                                                ← Back
+                                            </button>
+                                            <h1 className="text-3xl font-extrabold text-white">Submissions</h1>
+                                        </div>
+                                        <p className="text-slate-400 text-sm mt-1.5">Exam: <span className="text-indigo-400 font-semibold">{selectedSubmissionsExam.title}</span></p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleViewSubmissions(selectedSubmissionsExam)}
+                                        className="inline-flex items-center justify-center px-4 py-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-semibold text-slate-350 hover:text-white rounded-lg transition duration-200 cursor-pointer"
+                                    >
+                                        Refresh Submissions
+                                    </button>
+                                </div>
+
+                                {loadingSubmissions ? (
+                                    <div className="flex justify-center py-20">
+                                        <svg className="animate-spin h-8 w-8 text-indigo-500" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                    </div>
+                                ) : submissionsList.length === 0 ? (
+                                    <div className="bg-slate-900/30 border border-slate-800 p-12 text-center rounded-3xl backdrop-blur-sm">
+                                        <h3 className="font-semibold text-slate-300">No Submissions Found</h3>
+                                        <p className="text-slate-500 text-sm mt-1">Students have not completed or submitted this examination yet.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {submissionsList.map((sub: any) => (
+                                            <div
+                                                key={sub.id}
+                                                className="bg-slate-900/40 border border-slate-800 p-5 rounded-2xl flex flex-col md:flex-row justify-between md:items-center gap-4 hover:border-slate-700/80 transition duration-300"
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-bold text-slate-100">{sub.student?.name || 'Unknown Student'}</span>
+                                                        <span className="text-[10px] font-mono text-slate-500 truncate">({sub.student?.email})</span>
+                                                    </div>
+                                                    <div className="flex gap-4 text-xs font-semibold uppercase text-slate-500 tracking-wider pt-2">
+                                                        <span className="text-indigo-400">Score: {sub.score?.toFixed(1)}%</span>
+                                                        <span className="text-violet-400">Correct: {sub.correct_answers}/{sub.total_questions}</span>
+                                                        <span className={`${sub.total_flags > 0 ? 'text-red-400 animate-pulse' : 'text-slate-450'} font-bold`}>
+                                                            Flags: {sub.total_flags}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[10px] text-slate-550 mt-1">Submitted: {new Date(sub.submitted_at).toLocaleString()}</p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setInspectingSubmission(sub)}
+                                                    className="px-4 py-2.5 bg-slate-900 border border-slate-800 text-xs font-bold text-slate-350 hover:text-white hover:border-slate-700 rounded-xl transition duration-200 cursor-pointer text-center md:self-auto self-start"
+                                                >
+                                                    Inspect Answers
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -1349,6 +1446,79 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                     </div>
                 );
             })()}
+
+            {/* Inspect Answers Modal for Examiners */}
+            {inspectingSubmission && (
+                <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl h-[80vh] rounded-3xl p-6 md:p-8 flex flex-col shadow-2xl relative overflow-hidden">
+                        
+                        {/* Header */}
+                        <div className="flex justify-between items-start border-b border-slate-800 pb-4 mb-5">
+                            <div>
+                                <h2 className="text-2xl font-bold text-white">Student Submission Details</h2>
+                                <p className="text-xs text-slate-400 mt-1">Student: <span className="font-semibold text-slate-200">{inspectingSubmission.student?.name}</span> ({inspectingSubmission.student?.email})</p>
+                                <p className="text-sm font-semibold text-indigo-400 mt-1">Score: {inspectingSubmission.score?.toFixed(1)}% ({inspectingSubmission.correct_answers}/{inspectingSubmission.total_questions} correct)</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setInspectingSubmission(null)}
+                                className="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition duration-200 cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        {/* Question Answers Comparison */}
+                        <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
+                            {selectedSubmissionsExam?.questions.map((q: any, qIdx: number) => {
+                                const studentAnswer = inspectingSubmission.answers[qIdx];
+                                const isCorrect = studentAnswer === q.answer;
+
+                                return (
+                                    <div key={qIdx} className={`p-5 rounded-2xl border ${isCorrect ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                                        <div className="flex justify-between items-start gap-3">
+                                            <h3 className="font-bold text-slate-100 text-sm leading-snug">
+                                                Question {qIdx + 1}: {q.question || q.questionText}
+                                            </h3>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0 ${isCorrect ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                                {isCorrect ? 'Correct' : 'Incorrect'}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                                            {q.options.map((opt: string, oIdx: number) => {
+                                                const isCorrectOpt = opt === q.answer;
+                                                const isSelectedOpt = opt === studentAnswer;
+
+                                                let cardStyle = 'border-slate-800/80 bg-slate-950/40 text-slate-400';
+                                                if (isCorrectOpt) {
+                                                    cardStyle = 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 font-semibold';
+                                                } else if (isSelectedOpt) {
+                                                    cardStyle = 'border-red-500/40 bg-red-500/10 text-red-300 font-semibold';
+                                                }
+
+                                                return (
+                                                    <div key={oIdx} className={`p-3.5 rounded-xl border text-xs ${cardStyle} flex items-center justify-between`}>
+                                                        <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
+                                                        <div className="flex gap-1">
+                                                            {isSelectedOpt && (
+                                                                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-950/60 text-slate-350">Selected</span>
+                                                            )}
+                                                            {isCorrectOpt && (
+                                                                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">Correct Answer</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Toast Notifications */}
             <div className="fixed bottom-5 right-5 z-9999 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
