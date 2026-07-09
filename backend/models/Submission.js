@@ -43,6 +43,13 @@ const Submission = sequelize.define('Submission', {
         type         : DataTypes.DATE,
         defaultValue : DataTypes.NOW
     }
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    indexes: [
+        { fields: ['session_id'] },
+        { fields: ['student_id'] },
+        { fields: ['exam_id'] }
+    ]
+});
 
 module.exports = Submission;

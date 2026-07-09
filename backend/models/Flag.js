@@ -47,6 +47,13 @@ const Flag = sequelize.define('Flag', {
         type         : DataTypes.STRING,
         defaultValue : null
     }
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    indexes: [
+        { fields: ['session_id'] },
+        { fields: ['student_id'] },
+        { fields: ['exam_id'] }
+    ]
+});
 
 module.exports = Flag;

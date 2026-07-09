@@ -14,3 +14,20 @@ const sequelize = new Sequelize(
 );
 
 module.exports = sequelize;
+
+// Load models to establish relationships
+const User = require('./User');
+const Exam = require('./Exam');
+const Flag = require('./Flag');
+const Submission = require('./Submission');
+
+// Define relationships/associations
+Submission.belongsTo(User, { foreignKey: 'student_id', as: 'student' });
+Submission.belongsTo(Exam, { foreignKey: 'exam_id', as: 'exam' });
+Flag.belongsTo(User, { foreignKey: 'student_id', as: 'student' });
+Flag.belongsTo(Exam, { foreignKey: 'exam_id', as: 'exam' });
+
+User.hasMany(Submission, { foreignKey: 'student_id', as: 'submissions' });
+Exam.hasMany(Submission, { foreignKey: 'exam_id', as: 'submissions' });
+User.hasMany(Flag, { foreignKey: 'student_id', as: 'flags' });
+Exam.hasMany(Flag, { foreignKey: 'exam_id', as: 'flags' });
