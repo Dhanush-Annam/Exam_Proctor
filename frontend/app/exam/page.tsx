@@ -91,7 +91,7 @@ export default function ExamListPage({ params }: ExamListPageProps) {
             <main className="flex-1 p-6 md:p-12 relative z-10 max-w-4xl mx-auto w-full">
                 
                 {/* Sub Tab Switcher */}
-                <div className="flex gap-2 mb-8 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800 self-start inline-flex">
+                <div className="flex gap-2 mb-8 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800 self-start">
                     <button
                         onClick={() => setActiveSubTab('available')}
                         className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${

@@ -1264,7 +1264,9 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                             {selectedFlag && selectedFlag.image_path ? (
                                                 <>
                                                     <img 
-                                                        src={`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/proctor/static/${selectedFlag.image_path.replace(/\\/g, '/')}`} 
+                                                        src={selectedFlag.image_path.startsWith('http') 
+                                                            ? selectedFlag.image_path 
+                                                            : `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/proctor/static/${selectedFlag.image_path.replace(/\\/g, '/')}`} 
                                                         alt={selectedFlag.alert_type}
                                                         className="absolute inset-0 w-full h-full object-contain"
                                                     />
