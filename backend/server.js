@@ -41,7 +41,8 @@ app.get('/health', (req, res) => {
 // DB sync + start server
 const PORT = process.env.PORT || 3001;
 
-sequelize.sync({ alter: true })
+const shouldAlter = process.env.NODE_ENV !== 'production';
+sequelize.sync({ alter: shouldAlter })
     .then(() => {
         console.log('Database synced');
         server.listen(PORT, () => {
@@ -56,3 +57,5 @@ sequelize.sync({ alter: true })
         });
     })
     .catch(err => console.error('DB sync failed:', err));
+
+// Trigger nodemon reload for .env changes
