@@ -2,6 +2,7 @@ require('dotenv').config();
 const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
+const path       = require('path');
 const sequelize  = require('./models/index');
 const { initSocket } = require('./socket');
 
@@ -23,8 +24,9 @@ const server = http.createServer(app);
 initSocket(server);
 
 // Middleware
-app.use(cors({ origin: 'http://localhost:3000' }));
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
 app.use(express.json());
+app.use('/api/proctor/static', express.static(path.join(__dirname, '../ai-service')));
 
 // Routes
 app.use('/api/auth',    authRoutes);
