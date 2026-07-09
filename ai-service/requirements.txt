@@ -1,10 +1,14 @@
-opencv-python
+opencv-python-headless==4.9.0.80
 dlib
 imutils
-numpy
+numpy<2.0.0
 mediapipe==0.10.14
 fastapi
 uvicorn
 python-multipart
 python-dotenv
-google-generativeai
+google-genai
+torch
+torchvision
+git+https://github.com/Ahmednull/L2CS-Net.git@main
+Pillow

@@ -2,7 +2,6 @@ import os
 import warnings
 import json
 from pathlib import Path
-import google.generativeai as genai
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['GLOG_minloglevel']      = '3'
 warnings.filterwarnings('ignore')
@@ -137,9 +136,44 @@ async def analyze(
         "saved_flags": saved_flags
     }
 
+def ensure_local_report(session_id: str) -> bool:
+    session_dir = Path("flags") / session_id
+    report_path = session_dir / "session_report.json"
+    if report_path.exists():
+        return True
+
+    # Try downloading from Supabase
+    supabase_url = os.environ.get("SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_KEY")
+    supabase_bucket = os.environ.get("SUPABASE_BUCKET", "proctor-screenshots")
+
+    if supabase_url and supabase_key:
+        try:
+            supabase_url = supabase_url.rstrip("/")
+            download_url = f"{supabase_url}/storage/v1/object/public/{supabase_bucket}/{session_id}/session_report.json"
+            import urllib.request
+            req = urllib.request.Request(
+                download_url,
+                headers={
+                    "apikey": supabase_key,
+                    "Authorization": f"Bearer {supabase_key}"
+                }
+            )
+            with urllib.request.urlopen(req) as response:
+                if response.status == 200:
+                    session_dir.mkdir(parents=True, exist_ok=True)
+                    with open(report_path, "wb") as f:
+                        f.write(response.read())
+                    print(f"[Supabase] Downloaded session report for {session_id} from cloud storage")
+                    return True
+        except Exception as e:
+            print(f"[Supabase] Failed to download session report for {session_id}: {e}")
+    return False
+
 @app.get("/session/{session_id}/report")
 def get_report(session_id: str):
     import json
+    ensure_local_report(session_id)
     path = os.path.join("flags", session_id, "session_report.json")
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Session not found")
@@ -148,9 +182,8 @@ def get_report(session_id: str):
 
 def run_review_and_callback(session_dir: Path, session_id: str):
     import urllib.request
-    # 3. Configure Gemini and run the review script logic
+    # 3. Run the review script logic (review.py automatically handles Gemini Client initialization)
     if GEMINI_API_KEY:
-        genai.configure(api_key=GEMINI_API_KEY)
         report = process_session(session_dir, dry_run=False)
     else:
         report = process_session(session_dir, dry_run=True)
@@ -179,12 +212,11 @@ def end_session(session_id: str, background_tasks: BackgroundTasks):
             session["flag_manager"].end()
             del sessions[session_id]
             
-    # 2. Check if the directory and report exist
-    session_dir = Path("flags") / session_id
-    report_path = session_dir / "session_report.json"
-    if not report_path.exists():
+    # 2. Check if the directory and report exist (checks local and pulls from Supabase if needed)
+    if not ensure_local_report(session_id):
         raise HTTPException(status_code=404, detail="Session report not found")
         
+    session_dir = Path("flags") / session_id
     # Schedule the Gemini review in the background
     background_tasks.add_task(run_review_and_callback, session_dir, session_id)
     

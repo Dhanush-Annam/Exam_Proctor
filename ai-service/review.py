@@ -28,7 +28,8 @@ import argparse
 from pathlib import Path
 
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+client = None
 from PIL import Image
 
 # Load environment variables from .env file
@@ -103,12 +104,29 @@ Important: Return ONLY the JSON object. No markdown, no explanation, no backtick
 
 def call_gemini(image_path: str, prompt: str) -> dict:
     """Send image + prompt to Gemini, return parsed verdict dict."""
-    img = Image.open(image_path)
-    model = genai.GenerativeModel(MODEL_NAME)
+    import urllib.request
+    from io import BytesIO
+    
+    try:
+        if image_path.startswith("http://") or image_path.startswith("https://"):
+            with urllib.request.urlopen(image_path) as response:
+                img = Image.open(BytesIO(response.read()))
+        else:
+            img = Image.open(image_path)
+    except Exception as e:
+        print(f"      [!] Failed to open image at {image_path}: {e}")
+        return {"verdict": "SUSPICIOUS", "reason": f"Failed to load image for visual analysis: {e}"}
+
+    global client
+    if client is None:
+        client = genai.Client(api_key=GEMINI_API_KEY)
 
     for attempt in range(1, RETRY_LIMIT + 1):
         try:
-            response = model.generate_content([prompt, img])
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=[prompt, img]
+            )
             text = response.text.strip()
 
             # Strip accidental markdown fences
@@ -166,7 +184,7 @@ def process_session(session_dir: Path, dry_run: bool = False) -> dict:
     print(f"{'='*60}")
 
     if not pending:
-        print("  ✓ All flags already reviewed.")
+        print("  [OK] All flags already reviewed.")
         return {"session_id": session_id, "reviewed": 0, "already_done": total}
 
     reviewed = 0
@@ -181,24 +199,32 @@ def process_session(session_dir: Path, dry_run: bool = False) -> dict:
 
         # Resolve image path
         raw_path   = flag.get("image_path", "")
-        image_path = Path(raw_path)
-        if not image_path.is_absolute():
-            if not image_path.exists():
-                image_path = session_dir / image_path.name
+        is_remote  = raw_path.startswith("http://") or raw_path.startswith("https://")
+        
+        if is_remote:
+            image_path_str = raw_path
+            image_exists = True
+        else:
+            image_path = Path(raw_path)
+            if not image_path.is_absolute():
+                if not image_path.exists():
+                    image_path = session_dir / image_path.name
+            image_path_str = str(image_path)
+            image_exists = image_path.exists()
 
         print(f"\n  [{flag_id}] {alert_type}")
 
-        if not image_path.exists():
-            print(f"    [!] Image not found at '{image_path}' — marking SUSPICIOUS")
+        if not image_exists:
+            print(f"    [!] Image not found at '{image_path_str}' — marking SUSPICIOUS")
             flag["ai_verdict"] = "SUSPICIOUS"
             flag["ai_reason"]  = "Image file missing — could not perform visual review."
         elif dry_run:
-            print(f"    [DRY RUN] Would send: {image_path.name}")
+            print(f"    [DRY RUN] Would send: {image_path_str}")
             flag["ai_verdict"] = "SUSPICIOUS"
             flag["ai_reason"]  = "Dry run — no API call made."
         else:
             prompt = build_prompt(flag)
-            result = call_gemini(str(image_path), prompt)
+            result = call_gemini(image_path_str, prompt)
             flag["ai_verdict"] = result["verdict"]
             flag["ai_reason"]  = result["reason"]
             print(f"    Verdict : {result['verdict']}")
@@ -240,7 +266,7 @@ def process_session(session_dir: Path, dry_run: bool = False) -> dict:
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2)
 
-    print(f"\n  ── Session Review Complete ──")
+    print(f"\n  == Session Review Complete ==")
     print(f"     Session verdict : {session_verdict}")
     print(f"     Summary         : {report['ai_summary']}")
 
@@ -267,7 +293,8 @@ def main():
         return
 
     if not args.dry_run:
-        genai.configure(api_key=GEMINI_API_KEY)
+        global client
+        client = genai.Client(api_key=GEMINI_API_KEY)
 
     flags_root = Path(FLAGS_ROOT)
     if not flags_root.exists():
@@ -301,13 +328,13 @@ def main():
 
     # ── Final summary ────────────────────────────────────────────────────────
     print(f"\n{'='*60}")
-    print(f"  REVIEW COMPLETE — {len(results)} session(s) processed")
+    print(f"  REVIEW COMPLETE - {len(results)} session(s) processed")
     print(f"{'='*60}")
     for r in results:
         if r.get("skipped"):
             continue
         sid     = r.get("session_id", "?")
-        verdict = r.get("session_verdict", "—")
+        verdict = r.get("session_verdict", "-")
         summary = r.get("summary", "")
         print(f"  {sid:40s}  [{verdict}]  {summary}")
 
