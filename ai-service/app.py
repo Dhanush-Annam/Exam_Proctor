@@ -35,7 +35,7 @@ face_detector = FaceDetector(
     caffemodel ="models/res10_300x300_ssd_iter_140000.caffemodel"
 )
 ear_detector  = EARDetector(threshold=0.15, consec_frames=8)
-gaze_detector = GazeDetector(weights_path="models/L2CSNet_gaze360.pkl")
+gaze_detector = GazeDetector()
 
 # ── Session State ────────────────────────────────────────
 sessions      = {}
