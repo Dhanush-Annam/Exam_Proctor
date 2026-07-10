@@ -42,10 +42,11 @@ export default function ExamPage({ params }: ExamPageProps) {
     useEffect(() => {
         const stored = localStorage.getItem('user');
         if (!stored) { router.push('/login'); return; }
-        setUser(JSON.parse(stored));
-
-        const sid = `session_${Date.now()}`;
-        setSessionId(sid);
+        
+        setTimeout(() => {
+            setUser(JSON.parse(stored));
+            setSessionId(`session_${Date.now()}`);
+        }, 0);
 
         getExam(id as string)
             .then(res => setExam(res.data))

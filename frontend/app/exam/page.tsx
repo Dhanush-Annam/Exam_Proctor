@@ -23,7 +23,9 @@ export default function ExamListPage({ params }: ExamListPageProps) {
             router.push('/login');
             return;
         }
-        setUser(JSON.parse(stored));
+        setTimeout(() => {
+            setUser(JSON.parse(stored));
+        }, 0);
 
         Promise.all([getExams(), getMySubmissions()])
             .then(([examsRes, submissionsRes]) => {

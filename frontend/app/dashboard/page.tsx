@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getExaminerExams, createExam, updateExamStatus, getProctorSessions, updateExam, getSubmissions } from '@/lib/api';
@@ -82,13 +82,13 @@ export default function DashboardPage({ params }: DashboardPageProps) {
         ramGb: number;
     } | null>(null);
 
-    const showToast = (message: string, type: Toast['type'] = 'info') => {
+    const showToast = useCallback((message: string, type: Toast['type'] = 'info') => {
         const id = Math.random().toString(36).substring(2, 9);
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => {
             setToasts(prev => prev.filter(t => t.id !== id));
         }, 4000);
-    };
+    }, []);
 
     // Load real client system metadata
     useEffect(() => {
@@ -98,13 +98,15 @@ export default function DashboardPage({ params }: DashboardPageProps) {
         const cores = navigator.hardwareConcurrency || 4;
         const ram = (navigator as any).deviceMemory || 8;
         
-        setRealMetadata({
-            ip: 'Fetching...',
-            location: 'Fetching...',
-            browser: `${browserInfo.name} v${browserInfo.version}`,
-            cpuCores: cores,
-            ramGb: ram
-        });
+        setTimeout(() => {
+            setRealMetadata({
+                ip: 'Fetching...',
+                location: 'Fetching...',
+                browser: `${browserInfo.name} v${browserInfo.version}`,
+                cpuCores: cores,
+                ramGb: ram
+            });
+        }, 0);
         
         fetch('https://ipapi.co/json/')
             .then(res => res.json())
@@ -141,7 +143,9 @@ export default function DashboardPage({ params }: DashboardPageProps) {
     const itemsPerPage = 5;
 
     useEffect(() => {
-        setCurrentPage(1);
+        setTimeout(() => {
+            setCurrentPage(1);
+        }, 0);
     }, [searchTerm, verdictFilter]);
 
     // Calculate Stats from sessions (Screen 2 Stats panel)
@@ -188,8 +192,37 @@ export default function DashboardPage({ params }: DashboardPageProps) {
     const [selectedSession, setSelectedSession] = useState<ProctorSession | null>(null);
     const [selectedFlag, setSelectedFlag] = useState<any | null>(null);
 
+    const loadDashboardData = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const [examsRes, sessionsRes] = await Promise.all([
+                getExaminerExams(),
+                getProctorSessions()
+            ]);
+            setExams(examsRes.data);
+            const newSessions = sessionsRes.data;
+            setSessions(newSessions);
+
+            // Sync the active selectedSession if it is currently open
+            setSelectedSession(prev => {
+                if (!prev) return null;
+                const updated = newSessions.find(
+                    (s: any) => s.session_id === prev.session_id
+                );
+                return updated || prev;
+            });
+        } catch (err: any) {
+            setError(err.response?.data?.error || 'Failed to load dashboard data');
+        } finally {
+            setLoading(false);
+        }
+    }, [setSelectedSession]);
+
     useEffect(() => {
-        setSelectedFlag(null);
+        setTimeout(() => {
+            setSelectedFlag(null);
+        }, 0);
     }, [selectedSession?.session_id]);
 
     // Initial check & load
@@ -205,37 +238,11 @@ export default function DashboardPage({ params }: DashboardPageProps) {
             router.push('/exam');
             return;
         }
-        setUser(parsedUser);
-        loadDashboardData();
-    }, [router]);
-
-    const loadDashboardData = async () => {
-        setLoading(true);
-        setError('');
-        try {
-            const [examsRes, sessionsRes] = await Promise.all([
-                getExaminerExams(),
-                getProctorSessions()
-            ]);
-            setExams(examsRes.data);
-            const newSessions = sessionsRes.data;
-            setSessions(newSessions);
-
-            // Sync the active selectedSession if it is currently open
-            if (selectedSession) {
-                const updated = newSessions.find(
-                    (s: any) => s.session_id === selectedSession.session_id
-                );
-                if (updated) {
-                    setSelectedSession(updated);
-                }
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.error || 'Failed to load dashboard data');
-        } finally {
-            setLoading(false);
-        }
-    };
+        setTimeout(() => {
+            setUser(parsedUser);
+            loadDashboardData();
+        }, 0);
+    }, [router, loadDashboardData]);
 
     const handleToggleStatus = async (examId: string, currentStatus: string) => {
         let nextStatus: 'draft' | 'active' | 'closed' = 'active';
@@ -1154,9 +1161,10 @@ export default function DashboardPage({ params }: DashboardPageProps) {
 
                 // Dynamic timeline start/durations
                 const flagsArray = selectedSession.flags || [];
-                const flagTimes = flagsArray.map(f => new Date(f.createdAt || Date.now()).getTime()).sort((a, b) => a - b);
-                const minTime = flagTimes[0] || Date.now();
-                const maxTime = flagTimes[flagTimes.length - 1] || Date.now();
+                const sessionTimeFallback = selectedSession.latestFlagAt ? new Date(selectedSession.latestFlagAt).getTime() : 0;
+                const flagTimes = flagsArray.map(f => new Date(f.createdAt || sessionTimeFallback).getTime()).sort((a, b) => a - b);
+                const minTime = flagTimes[0] || sessionTimeFallback;
+                const maxTime = flagTimes[flagTimes.length - 1] || sessionTimeFallback;
                 const sessionDurationMs = Math.max(5 * 60 * 1000, maxTime - minTime + 2 * 60 * 1000); 
                 const sessionStart = minTime - 1 * 60 * 1000; 
 
