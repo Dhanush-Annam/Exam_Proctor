@@ -69,7 +69,15 @@ class FlagManager:
                             image_path = public_url
                             print(f"[Supabase] Screenshot uploaded successfully: {public_url}")
             except Exception as e:
-                print(f"[Supabase] Screenshot upload failed: {e}")
+                import urllib.error
+                if isinstance(e, urllib.error.HTTPError):
+                    try:
+                        err_body = e.read().decode('utf-8')
+                        print(f"[Supabase] Screenshot upload failed: {e} - Response: {err_body}")
+                    except Exception:
+                        print(f"[Supabase] Screenshot upload failed: {e}")
+                else:
+                    print(f"[Supabase] Screenshot upload failed: {e}")
 
         entry = {
             "flag_id"      : flag_id,
@@ -130,7 +138,15 @@ class FlagManager:
                         if response.status in [200, 201]:
                             print(f"[Supabase] Session report updated successfully (PUT).")
                 except Exception as put_err:
-                    print(f"[Supabase] Session report upload and update failed: {put_err}")
+                    import urllib.error
+                    if isinstance(put_err, urllib.error.HTTPError):
+                        try:
+                            err_body = put_err.read().decode('utf-8')
+                            print(f"[Supabase] Session report upload and update failed: {put_err} - Response: {err_body}")
+                        except Exception:
+                            print(f"[Supabase] Session report upload and update failed: {put_err}")
+                    else:
+                        print(f"[Supabase] Session report upload and update failed: {put_err}")
 
     def _save_report(self):
         report = {
