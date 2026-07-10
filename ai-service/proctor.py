@@ -1,63 +1,20 @@
+import os
+import warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['GLOG_minloglevel']      = '3'
+warnings.filterwarnings('ignore', category=UserWarning, module='google.protobuf')
+warnings.filterwarnings('ignore')
+
 import cv2
 import mediapipe as mp
 import numpy as np
-import torch
 import time
-import os
 import json
-import threading
 from datetime import datetime
-from l2cs import Pipeline
 
-torch.set_num_threads(os.cpu_count())
 cv2.setNumThreads(os.cpu_count())
 
-# Shared state
-gaze_lock   = threading.Lock()
-latest_yaw   = None
-latest_pitch = None
-latest_frame = None
-new_frame_ready = False
-
-# ── L2CS Gaze Pipeline ───────────────────────────────────
-gaze_pipeline = Pipeline(
-    weights='models/L2CSNet_gaze360.pkl',
-    arch='ResNet50',
-    device=torch.device('cpu')
-)
-
-def gaze_worker():
-    global latest_yaw, latest_pitch, new_frame_ready
-    while True:
-        frame_to_process = None
-        with gaze_lock:
-            if new_frame_ready and latest_frame is not None:
-                frame_to_process = latest_frame.copy()
-                new_frame_ready = False
-
-        if frame_to_process is not None:
-            try:
-                result = gaze_pipeline.step(frame_to_process)
-                if result and len(result.yaw) > 0:
-                    with gaze_lock:
-                        latest_yaw   = float(np.degrees(result.yaw[0]))
-                        latest_pitch = float(np.degrees(result.pitch[0]))
-                else:
-                    with gaze_lock:
-                        latest_yaw   = None
-                        latest_pitch = None
-            except:
-                with gaze_lock:
-                    latest_yaw   = None
-                    latest_pitch = None
-        else:
-            time.sleep(0.01)
-
-# Start gaze thread
-t = threading.Thread(target=gaze_worker, daemon=True)
-t.start()
-
-# ── MediaPipe Face Mesh (for EAR only) ───────────────────
+# ── MediaPipe Face Mesh ───────────────────
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh    = mp_face_mesh.FaceMesh(
     max_num_faces=2,
@@ -107,7 +64,8 @@ last_alert_times = {}
 # ── Constants ────────────────────────────────────────────
 EAR_THRESHOLD        = 0.15
 EAR_CONSEC_FRAMES    = 8
-YAW_OFFSET           = -4.0
+YAW_OFFSET           = 0.0
+PITCH_OFFSET         = 0.0
 YAW_THRESHOLD        = 18.0   # degrees left/right
 PITCH_THRESHOLD      = 999.0   # degrees up/down
 SUSPICIOUS_TIME      = 2.5
@@ -117,6 +75,12 @@ COOLDOWN_TIME        = 3.0
 ear_counter     = 0
 gaze_start_time = None
 last_gaze       = "CENTER"
+
+# ── Calibration State ────────────────────────────────────
+calibration_frames    = 0
+calibration_yaw_sum   = 0.0
+calibration_pitch_sum = 0.0
+is_calibrated         = False
 
 # ── Helpers ──────────────────────────────────────────────
 def get_landmark_point(landmarks, index, w, h):
@@ -148,6 +112,45 @@ def get_iris_gaze(landmarks, iris_id, left_id, right_id, w, h):
     # Swapped for MediaPipe coordinate system
     ratio = (iris[0] - right[0]) / eye_width
     return ratio
+
+def get_head_pose_vector(landmarks, w, h):
+    if not landmarks:
+        return 0.0, 0.0
+
+    # Get 3D coordinates from landmarks
+    p_right_eye = np.array([landmarks[33].x, landmarks[33].y, landmarks[33].z])
+    p_left_eye  = np.array([landmarks[263].x, landmarks[263].y, landmarks[263].z])
+    p_nose      = np.array([landmarks[1].x, landmarks[1].y, landmarks[1].z])
+    p_chin      = np.array([landmarks[152].x, landmarks[152].y, landmarks[152].z])
+
+    # Horizontal axis (right eye to left eye)
+    v_x = p_left_eye - p_right_eye
+    norm_x = np.linalg.norm(v_x)
+    if norm_x == 0:
+        return 0.0, 0.0
+    u_x = v_x / norm_x
+
+    # Vertical vector (nose to chin)
+    v_y_temp = p_chin - p_nose
+
+    # Normal vector (orthogonal to face, pointing towards camera)
+    v_z = np.cross(u_x, v_y_temp)
+    norm_z = np.linalg.norm(v_z)
+    if norm_z == 0:
+        return 0.0, 0.0
+    u_z = v_z / norm_z
+    if u_z[2] > 0:
+        u_z = -u_z
+
+    # Extract yaw and pitch directly using trigonometry
+    yaw = np.arctan2(u_z[0], -u_z[2])
+    pitch = np.arctan2(u_z[1], -u_z[2])
+
+    # Convert to degrees
+    yaw = np.degrees(yaw)
+    pitch = np.degrees(pitch)
+    
+    return yaw, pitch
 
 def can_fire(alert_type):
     now = time.time()
@@ -210,9 +213,17 @@ def end_session():
 
 # ── Main Loop ────────────────────────────────────────────
 cap = cv2.VideoCapture(0)
+
+# Camera warmup (give hardware sensor time to initialize and adjust exposure)
+print("Warming up camera...")
+for _ in range(10):
+    cap.read()
+    time.sleep(0.05)
+
 print("Starting proctoring session... Press Q to quit.\n")
 
-
+session_start_time = time.time()
+GRACE_PERIOD       = 2.0  # seconds grace period for startup flags
 
 try:
     while True:
@@ -220,15 +231,8 @@ try:
         if not ret:
             break
         
-        # Feed frame to gaze worker
-        with gaze_lock:
-            latest_frame = frame.copy()
-            new_frame_ready = True
-
-        # Read latest result (non-blocking)
-        with gaze_lock:
-            yaw   = latest_yaw
-            pitch = latest_pitch
+        yaw = None
+        pitch = None
 
         h, w      = frame.shape[:2]
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -254,52 +258,78 @@ try:
         iris_gaze = "CENTER"
         mp_results = face_mesh.process(rgb_frame)
 
+        landmarks = None
         if mp_results.multi_face_landmarks:
             landmarks = mp_results.multi_face_landmarks[0].landmark
 
-        # ── EAR ─────────────────────────────────────────────
-        left_ear  = eye_aspect_ratio(
-            landmarks,
-            LEFT_EYE_TOP, LEFT_EYE_BOTTOM,
-            LEFT_EYE_LEFT, LEFT_EYE_RIGHT, w, h
-        )
-        right_ear = eye_aspect_ratio(
-            landmarks,
-            RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM,
-            RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT, w, h
-        )
-        current_ear = (left_ear + right_ear) / 2.0
+        if landmarks is not None:
+            # ── EAR ─────────────────────────────────────────────
+            left_ear  = eye_aspect_ratio(
+                landmarks,
+                LEFT_EYE_TOP, LEFT_EYE_BOTTOM,
+                LEFT_EYE_LEFT, LEFT_EYE_RIGHT, w, h
+            )
+            right_ear = eye_aspect_ratio(
+                landmarks,
+                RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM,
+                RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT, w, h
+            )
+            current_ear = (left_ear + right_ear) / 2.0
 
-        cv2.putText(frame, f"EAR: {current_ear:.2f}", (10, h - 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+            cv2.putText(frame, f"EAR: {current_ear:.2f}", (10, h - 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
-        if current_ear < EAR_THRESHOLD:
-            ear_counter += 1
-            if ear_counter >= EAR_CONSEC_FRAMES:
-                save_flag(frame, "EYES_CLOSED",
-                        f"EAR={current_ear:.2f}", ear=current_ear)
-                status_text  = "ALERT: Eyes closed!"
-                status_color = (0, 0, 255)
-                cv2.putText(frame, "EYES CLOSED", (10, 90),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            if current_ear < EAR_THRESHOLD:
+                ear_counter += 1
+                if ear_counter >= EAR_CONSEC_FRAMES:
+                    save_flag(frame, "EYES_CLOSED",
+                            f"EAR={current_ear:.2f}", ear=current_ear)
+                    status_text  = "ALERT: Eyes closed!"
+                    status_color = (0, 0, 255)
+                    cv2.putText(frame, "EYES CLOSED", (10, 90),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            else:
+                ear_counter = 0
+
+            # ── Iris Gaze ────────────────────────────────────────
+            left_ratio  = get_iris_gaze(landmarks, LEFT_IRIS_CENTER,
+                                        LEFT_EYE_LEFT, LEFT_EYE_RIGHT, w, h)
+            right_ratio = get_iris_gaze(landmarks, RIGHT_IRIS_CENTER,
+                                        RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT, w, h)
+
+            valid = [r for r in [left_ratio, right_ratio] if r is not None]
+            if valid:
+                avg_ratio = sum(valid) / len(valid)
+                if avg_ratio < GAZE_LEFT_THRESHOLD:
+                    iris_gaze = "LEFT"
+                elif avg_ratio > GAZE_RIGHT_THRESHOLD:
+                    iris_gaze = "RIGHT"
+                else:
+                    iris_gaze = "CENTER"
+
+            # ── Head Gaze Vector ─────────────────────────────────
+            raw_yaw, raw_pitch = get_head_pose_vector(landmarks, w, h)
+            
+            if not is_calibrated:
+                calibration_frames += 1
+                calibration_yaw_sum += raw_yaw
+                calibration_pitch_sum += raw_pitch
+                
+                status_text = f"Calibrating... {calibration_frames}/15"
+                status_color = (0, 255, 255) # Cyan HUD during calibration
+                
+                if calibration_frames >= 15:
+                    YAW_OFFSET = calibration_yaw_sum / 15.0
+                    PITCH_OFFSET = calibration_pitch_sum / 15.0
+                    is_calibrated = True
+                    print(f"\n[Calibration Complete] Dynamic Offsets set to: YAW={YAW_OFFSET:.1f}, PITCH={PITCH_OFFSET:.1f}\n")
+                
+                yaw, pitch = 0.0, 0.0
+            else:
+                yaw = raw_yaw - YAW_OFFSET
+                pitch = raw_pitch - PITCH_OFFSET
         else:
             ear_counter = 0
-
-        # ── Iris Gaze ────────────────────────────────────────
-        left_ratio  = get_iris_gaze(landmarks, LEFT_IRIS_CENTER,
-                                    LEFT_EYE_LEFT, LEFT_EYE_RIGHT, w, h)
-        right_ratio = get_iris_gaze(landmarks, RIGHT_IRIS_CENTER,
-                                    RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT, w, h)
-
-        valid = [r for r in [left_ratio, right_ratio] if r is not None]
-        if valid:
-            avg_ratio = sum(valid) / len(valid)
-            if avg_ratio < GAZE_LEFT_THRESHOLD:
-                iris_gaze = "LEFT"
-            elif avg_ratio > GAZE_RIGHT_THRESHOLD:
-                iris_gaze = "RIGHT"
-            else:
-                iris_gaze = "CENTER"
 
         cv2.putText(frame, f"Iris: {iris_gaze}", (10, h - 80),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
@@ -326,7 +356,7 @@ try:
                 current_gaze = "CENTER"
                 signal = ""
 
-            cv2.putText(frame, f"Head: {head_gaze}", (10, h - 100),
+            cv2.putText(frame, f"Head: {head_gaze} (Y:{yaw:.1f}, P:{pitch:.1f})", (10, h - 100),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
             cv2.putText(frame, f"Gaze: {current_gaze} {signal}",
                         (10, h - 20),
@@ -336,24 +366,35 @@ try:
                 if last_gaze != current_gaze:
                     gaze_start_time = time.time()
                     last_gaze       = current_gaze
-                elif time.time() - gaze_start_time > SUSPICIOUS_TIME:
-                    save_flag(
-                        frame,
-                        f"GAZE_{current_gaze}",
-                        f"signal={signal} yaw={yaw:.1f}deg iris={iris_gaze}",
-                        yaw=yaw, pitch=pitch
-                    )
-                    status_text  = f"ALERT: Looking {current_gaze} ({signal})!"
-                    status_color = (0, 0, 255)
+                    print(f"[Gaze] Started tracking deviation to {current_gaze} via {signal}...")
+                
+                if gaze_start_time is not None:
+                    held_duration = time.time() - gaze_start_time
+                    cv2.putText(frame, f"Hold: {held_duration:.1f}s / {SUSPICIOUS_TIME}s", (10, h - 120),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                    
+                    if held_duration > SUSPICIOUS_TIME:
+                        save_flag(
+                            frame,
+                            f"GAZE_{current_gaze}",
+                            f"signal={signal} yaw={yaw:.1f}deg iris={iris_gaze}",
+                            yaw=yaw, pitch=pitch
+                        )
+                        status_text  = f"ALERT: Looking {current_gaze} ({signal})!"
+                        status_color = (0, 0, 255)
             else:
                 gaze_start_time = None
                 last_gaze       = "CENTER"
 
         # ── Face Count Alerts ────────────────────────────
         if face_count == 0:
-            save_flag(frame, "NO_FACE", "no face in frame")
-            status_text  = "ALERT: No face detected!"
-            status_color = (0, 0, 255)
+            if time.time() - session_start_time > GRACE_PERIOD:
+                save_flag(frame, "NO_FACE", "no face in frame")
+                status_text  = "ALERT: No face detected!"
+                status_color = (0, 0, 255)
+            else:
+                status_text  = "Initializing camera..."
+                status_color = (0, 255, 255)
         elif face_count > 1:
             save_flag(frame, "MULTIPLE_FACES",
                       f"{face_count} faces detected")
@@ -376,6 +417,8 @@ try:
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+except KeyboardInterrupt:
+    print("\nSession stopped by user (Ctrl+C).")
 finally:
     end_session()
     face_mesh.close()
