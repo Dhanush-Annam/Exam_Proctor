@@ -7,7 +7,7 @@ export default function PrewarmBackend() {
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
         
         console.log('Prewarming backend at:', backendUrl);
-        fetch(`${backendUrl}/health`)
+        fetch(`${backendUrl}/api/prewarm`)
             .then((res) => {
                 if (!res.ok) {
                     throw new Error(`HTTP error! status: ${res.status}`);

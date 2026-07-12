@@ -40,13 +40,17 @@ app.use('/api/proctor', proctorRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
-    // Asynchronously ping the AI service to warm it up
+    res.json({ status: 'ok', message: 'Backend running' });
+});
+
+// Dedicated Prewarm endpoint (triggered once when frontend mounts)
+app.get('/api/prewarm', (req, res) => {
     if (process.env.AI_SERVICE_URL) {
         axios.get(`${process.env.AI_SERVICE_URL}/health`)
             .then(() => console.log('AI Service prewarmed successfully'))
-            .catch((err) => console.warn('AI Service prewarm ping failed (could be offline or starting up):', err.message));
+            .catch((err) => console.warn('AI Service prewarm ping failed:', err.message));
     }
-    res.json({ status: 'ok', message: 'Backend running' });
+    res.json({ status: 'ok', message: 'Prewarming initiated' });
 });
 
 // DB sync + start server
