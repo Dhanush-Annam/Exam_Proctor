@@ -43,9 +43,14 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', message: 'Backend running' });
 });
 
+let lastPrewarmTime = 0;
+const PREWARM_COOLDOWN = 2 * 60 * 1000; // 2 minutes in ms
+
 // Dedicated Prewarm endpoint (triggered once when frontend mounts)
 app.get('/api/prewarm', (req, res) => {
-    if (process.env.AI_SERVICE_URL) {
+    const now = Date.now();
+    if (process.env.AI_SERVICE_URL && (now - lastPrewarmTime > PREWARM_COOLDOWN)) {
+        lastPrewarmTime = now;
         axios.get(`${process.env.AI_SERVICE_URL}/health`)
             .then(() => console.log('AI Service prewarmed successfully'))
             .catch((err) => console.warn('AI Service prewarm ping failed:', err.message));
