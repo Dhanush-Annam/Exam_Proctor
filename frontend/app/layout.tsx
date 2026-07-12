@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import PrewarmBackend from '../components/PrewarmBackend';
 
 export const metadata: Metadata = {
     title       : 'Exam Proctoring System',
@@ -12,6 +13,7 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className="min-h-screen antialiased">
+                <PrewarmBackend />
                 {children}
             </body>
         </html>
