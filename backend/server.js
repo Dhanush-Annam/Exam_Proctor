@@ -7,6 +7,7 @@ const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
 const path       = require('path');
+const axios      = require('axios');
 const sequelize  = require('./models/index');
 const { initSocket } = require('./socket');
 
@@ -39,6 +40,12 @@ app.use('/api/proctor', proctorRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
+    // Asynchronously ping the AI service to warm it up
+    if (process.env.AI_SERVICE_URL) {
+        axios.get(`${process.env.AI_SERVICE_URL}/health`)
+            .then(() => console.log('AI Service prewarmed successfully'))
+            .catch((err) => console.warn('AI Service prewarm ping failed (could be offline or starting up):', err.message));
+    }
     res.json({ status: 'ok', message: 'Backend running' });
 });
 
