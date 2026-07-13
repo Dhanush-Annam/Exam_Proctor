@@ -22,6 +22,7 @@ export default function ExamPage({ params }: ExamPageProps) {
     const [submitted, setSubmitted] = useState(false);
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [alerts, setAlerts] = useState<string[]>([]);
+    const [consented, setConsented] = useState(false);
     const [sessionId, setSessionId] = useState('');
     const [user, setUser] = useState<any>(null);
     
@@ -368,7 +369,7 @@ export default function ExamPage({ params }: ExamPageProps) {
                     <span className="text-secondary">📋 {exam?.questions?.length || 0} Questions</span>
                 </div>
 
-                <div className="bg-warning/10 border border-warning/30 rounded-xl p-5 mb-8 text-sm text-warning text-left leading-relaxed">
+                <div className="bg-warning/10 border border-warning/30 rounded-xl p-5 mb-6 text-sm text-warning text-left leading-relaxed">
                     <p className="font-bold mb-2.5 flex items-center gap-1.5 text-warning">
                         <span>⚠️</span> IMPORTANT INSTRUCTIONS:
                     </p>
@@ -381,9 +382,28 @@ export default function ExamPage({ params }: ExamPageProps) {
                     </ul>
                 </div>
 
+                {/* GDPR/FERPA Consent Checkbox */}
+                <div className="flex items-start gap-3 mb-8 text-left">
+                    <input
+                        type="checkbox"
+                        id="consent-checkbox"
+                        checked={consented}
+                        onChange={(e) => setConsented(e.target.checked)}
+                        className="mt-1 w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary cursor-pointer"
+                    />
+                    <label htmlFor="consent-checkbox" className="text-xs text-slate-350 leading-normal select-none cursor-pointer">
+                        I consent to the collection, streaming, and temporary storage of my webcam video feed, screen sharing capture, and browser focus metrics solely for exam proctoring and academic integrity verification (GDPR/FERPA compliant).
+                    </label>
+                </div>
+
                 <button
                     onClick={handleStart}
-                    className="w-full py-4 bg-primary text-on-primary rounded-xl font-body-bold text-base hover:bg-primary-container transition-all shadow-lg shadow-primary/20 hover:scale-[1.01] cursor-pointer"
+                    disabled={!consented}
+                    className={`w-full py-4 rounded-xl font-body-bold text-base transition-all shadow-lg text-on-primary ${
+                        consented
+                            ? 'bg-primary hover:bg-primary-container shadow-primary/20 hover:scale-[1.01] cursor-pointer'
+                            : 'bg-slate-800 text-slate-500 border border-outline-variant/30 cursor-not-allowed'
+                    }`}
                 >
                     Agree & Start Exam
                 </button>
