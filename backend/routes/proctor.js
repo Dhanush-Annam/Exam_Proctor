@@ -1,6 +1,8 @@
 const express = require('express');
 const axios   = require('axios');
 const FormData = require('form-data');
+const crypto  = require('crypto');
+const rateLimit = require('express-rate-limit');
 const auth    = require('../middleware/auth');
 const upload  = require('../middleware/upload');
 const Flag    = require('../models/Flag');
@@ -8,8 +10,69 @@ const User    = require('../models/User');
 const Exam    = require('../models/Exam');
 const Submission = require('../models/Submission');
 const sequelize  = require('../models/index');
+const { sendAlert } = require('../socket');
 const { Op }     = require('sequelize');
 const router  = express.Router();
+
+const webhookSecret = process.env.WEBHOOK_SECRET || 'super-secret-webhook-key';
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabaseBucket = process.env.SUPABASE_BUCKET || 'proctor-screenshots';
+
+const proctorLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 45,
+    message: { error: 'Too many frame submissions, please slow down.' }
+});
+
+function verifySignature(req, res, next) {
+    const signature = req.headers['x-webhook-signature'];
+    if (!signature) {
+        return res.status(401).json({ error: 'Webhook signature missing' });
+    }
+    const hmac = crypto.createHmac('sha256', webhookSecret);
+    const computedSignature = hmac.update(JSON.stringify(req.body)).digest('hex');
+    if (signature !== computedSignature) {
+        return res.status(403).json({ error: 'Invalid webhook signature' });
+    }
+    next();
+}
+
+async function getSignedUrl(imagePath) {
+    if (!supabaseUrl || !supabaseKey || !imagePath) return imagePath;
+    let relativePath = imagePath;
+    if (imagePath.startsWith('http')) {
+        const publicPrefix = `/storage/v1/object/public/${supabaseBucket}/`;
+        const authenticatedPrefix = `/storage/v1/object/${supabaseBucket}/`;
+        if (imagePath.includes(publicPrefix)) {
+            relativePath = imagePath.split(publicPrefix)[1];
+        } else if (imagePath.includes(authenticatedPrefix)) {
+            relativePath = imagePath.split(authenticatedPrefix)[1];
+        } else {
+            return imagePath;
+        }
+    }
+    try {
+        const url = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/sign/${supabaseBucket}/${relativePath}`;
+        const response = await axios.post(url, {
+            expiresIn: 900 // 15 mins
+        }, {
+            headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (response.data && response.data.signedURL) {
+            return response.data.signedURL;
+        } else if (response.data && response.data.signedUrl) {
+            return response.data.signedUrl;
+        }
+    } catch (err) {
+        console.error(`Failed to get signed URL for ${relativePath}:`, err.message);
+    }
+    return imagePath;
+}
 
 // Heuristic flag-level AI verdict engine
 function getFlagAiVerdict(alertType, detail = '') {
@@ -115,7 +178,7 @@ function calculateSessionVerdict(flags) {
     return { verdict, reason };
 }
 
-router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
+router.post('/analyze', auth, proctorLimiter, upload.single('frame'), async (req, res) => {
     try {
         const { session_id, exam_id } = req.body;
 
@@ -140,6 +203,14 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
 
         // Save flags to PostgreSQL if any (processes all alerts logged)
         if (result.alerts && result.alerts.length > 0 && result.flag_saved) {
+            sendAlert(session_id, {
+                alerts: result.alerts,
+                gaze: result.gaze,
+                face_count: result.face_count,
+                yaw: result.yaw,
+                pitch: result.pitch
+            });
+
             for (const alertType of result.alerts) {
                 const detailStr = `gaze=${result.gaze} signal=${result.signal}`;
                 const { ai_verdict, ai_reason } = getFlagAiVerdict(alertType, detailStr);
@@ -165,7 +236,7 @@ router.post('/analyze', auth, upload.single('frame'), async (req, res) => {
 
         res.json(result);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'An error occurred during proctor analysis.' });
     }
 });
 
@@ -211,11 +282,19 @@ router.get('/sessions', auth, async (req, res) => {
         }
 
         // Construct session objects with status determined by Gemini AI verdicts
-        const sessions = submissions.map((sub) => {
+        const sessions = await Promise.all(submissions.map(async (sub) => {
             const sessionFlags = flagsMap[sub.session_id] || [];
             
+            const signedSessionFlags = await Promise.all(sessionFlags.map(async (flag) => {
+                const flagData = flag.toJSON();
+                if (flagData.image_path) {
+                    flagData.image_path = await getSignedUrl(flagData.image_path);
+                }
+                return flagData;
+            }));
+
             // Filter flags that are NOT false alarms
-            const activeFlags = sessionFlags.filter(f => f.ai_verdict !== 'FALSE_ALARM');
+            const activeFlags = signedSessionFlags.filter(f => f.ai_verdict !== 'FALSE_ALARM');
             
             const hasHighRisk = activeFlags.some(f => f.ai_verdict === 'HIGH_RISK');
             const hasSuspicious = activeFlags.some(f => f.ai_verdict === 'SUSPICIOUS');
@@ -235,22 +314,22 @@ router.get('/sessions', auth, async (req, res) => {
                 session_id   : sub.session_id,
                 student      : sub.student,
                 exam         : sub.exam,
-                flags        : sessionFlags, // Return all flags for detailed timeline
+                flags        : signedSessionFlags, // Return all signed flags for detailed timeline
                 flagsCount   : sessionFlags.length,
                 latestFlagAt : sessionFlags.length > 0 ? sessionFlags[0].createdAt : sub.submitted_at,
                 verdict      : verdict,
                 reason       : reason
             };
-        });
+        }));
 
         res.json(sessions);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'An error occurred fetching proctor sessions.' });
     }
 });
 
 // Callback webhook for FastAPI asynchronously completed review
-router.post('/session/:session_id/review-complete', async (req, res) => {
+router.post('/session/:session_id/review-complete', verifySignature, async (req, res) => {
     try {
         const { session_id } = req.params;
         const { flags } = req.body;
@@ -275,7 +354,7 @@ router.post('/session/:session_id/review-complete', async (req, res) => {
         }
         res.json({ success: true, message: 'Verdicts successfully updated' });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to update verdicts.' });
     }
 });
 
@@ -298,9 +377,18 @@ router.get('/flags/:session_id', auth, async (req, res) => {
                 }
             }
         }
-        res.json(flags);
+
+        const signedFlags = await Promise.all(flags.map(async (flag) => {
+            const flagData = flag.toJSON();
+            if (flagData.image_path) {
+                flagData.image_path = await getSignedUrl(flagData.image_path);
+            }
+            return flagData;
+        }));
+
+        res.json(signedFlags);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to retrieve flags.' });
     }
 });
 
@@ -311,6 +399,11 @@ router.post('/log-event', auth, async (req, res) => {
             return res.status(400).json({ error: 'Missing required parameters' });
         }
         const { ai_verdict, ai_reason } = getFlagAiVerdict(alert_type, detail);
+
+        sendAlert(session_id, {
+            alerts: [alert_type],
+            detail: detail || ''
+        });
 
         await Flag.create({
             session_id,
@@ -323,7 +416,7 @@ router.post('/log-event', auth, async (req, res) => {
         });
         res.json({ logged: true });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to log event.' });
     }
 });
 

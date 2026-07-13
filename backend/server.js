@@ -23,6 +23,7 @@ const examRoutes    = require('./routes/exam');
 const proctorRoutes = require('./routes/proctor');
 
 const app    = express();
+app.set('trust proxy', true);
 const server = http.createServer(app);
 
 // Init WebSocket
@@ -77,5 +78,3 @@ sequelize.sync({ alter: shouldAlter })
         });
     })
     .catch(err => console.error('DB sync failed:', err));
-
-// Trigger nodemon reload for .env changes
