@@ -13,6 +13,17 @@ export const connectSocket = (session_id: string): Socket => {
     return socket;
 };
 
+export const connectExaminerSocket = (): Socket => {
+    if (!socket) {
+        socket = io(
+            process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
+        );
+    }
+
+    socket.emit('join_examiner');
+    return socket;
+};
+
 export const disconnectSocket = () => {
     if (socket) {
         socket.disconnect();

@@ -8,7 +8,7 @@ function initSocket(server) {
     });
 
     io.on('connection', (socket) => {
-        console.log(`Student connected: ${socket.id}`);
+        console.log(`Socket connected: ${socket.id}`);
 
         // Student joins their exam session room
         socket.on('join_session', ({ session_id }) => {
@@ -16,18 +16,25 @@ function initSocket(server) {
             console.log(`Socket ${socket.id} joined session ${session_id}`);
         });
 
+        // Examiner joins the examiners room
+        socket.on('join_examiner', () => {
+            socket.join('examiners');
+            console.log(`Socket ${socket.id} joined examiners room`);
+        });
+
         socket.on('disconnect', () => {
-            console.log(`Student disconnected: ${socket.id}`);
+            console.log(`Socket disconnected: ${socket.id}`);
         });
     });
 
     return io;
 }
 
-// Send alert to a specific session
+// Send alert to a specific session and examiners room
 function sendAlert(session_id, alertData) {
     if (io) {
         io.to(session_id).emit('proctor_alert', alertData);
+        io.to('examiners').emit('live_proctor_alert', { session_id, ...alertData });
     }
 }
 

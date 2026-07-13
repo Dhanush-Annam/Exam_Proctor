@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getExaminerExams, createExam, updateExamStatus, getProctorSessions, updateExam, getSubmissions } from '@/lib/api';
+import { connectExaminerSocket, disconnectSocket } from '@/lib/socket';
 
 export interface DashboardPageProps {
     readonly params?: any;
@@ -243,6 +244,75 @@ export default function DashboardPage({ params }: DashboardPageProps) {
             loadDashboardData();
         }, 0);
     }, [router, loadDashboardData]);
+
+    // Socket real-time alert updates
+    useEffect(() => {
+        const token = localStorage.getItem('token');
+        const userData = localStorage.getItem('user');
+        if (!token || !userData) return;
+        const parsedUser = JSON.parse(userData);
+        if (parsedUser.role !== 'examiner') return;
+
+        const socket = connectExaminerSocket();
+
+        socket.on('live_proctor_alert', (data: { session_id: string; alerts: string[]; gaze?: string; face_count?: number }) => {
+            // 1. Show alert toast
+            const alertText = data.alerts.join(', ');
+            showToast(`⚠️ Live Alert [Session: ${data.session_id.substring(8, 14)}...]: ${alertText}`, 'warning');
+
+            // 2. Dynamically update the sessions list
+            setSessions(prevSessions => {
+                return prevSessions.map(session => {
+                    if (session.session_id === data.session_id) {
+                        const newFlags = [...session.flags];
+                        data.alerts.forEach(alertType => {
+                            const isDuplicate = newFlags.some(f => 
+                                f.alert_type === alertType && 
+                                (Date.now() - new Date(f.createdAt || Date.now()).getTime()) < 5000
+                            );
+                            if (!isDuplicate) {
+                                newFlags.unshift({
+                                    alert_type: alertType,
+                                    detail: `Gaze: ${data.gaze || 'N/A'}, Face Count: ${data.face_count || 1}`,
+                                    createdAt: new Date().toISOString(),
+                                    ai_verdict: 'SUSPICIOUS',
+                                    ai_reason: 'Real-time proctor alert logged by browser/webcam.'
+                                });
+                            }
+                        });
+
+                        const activeFlags = newFlags.filter(f => f.ai_verdict !== 'FALSE_ALARM');
+                        const hasHighRisk = activeFlags.some(f => f.ai_verdict === 'HIGH_RISK');
+                        const hasSuspicious = activeFlags.some(f => f.ai_verdict === 'SUSPICIOUS');
+                        
+                        let verdict: 'NORMAL' | 'SUSPICIOUS' | 'CRITICAL' = 'NORMAL';
+                        let reason = 'Normal session activity.';
+                        if (hasHighRisk || activeFlags.length >= 5) {
+                            verdict = 'CRITICAL';
+                            reason = `CRITICAL RISK: Real-time flags logged.`;
+                        } else if (hasSuspicious || activeFlags.length >= 2) {
+                            verdict = 'SUSPICIOUS';
+                            reason = `SUSPICIOUS: Real-time flags logged.`;
+                        }
+
+                        return {
+                            ...session,
+                            flags: newFlags,
+                            flagsCount: newFlags.length,
+                            latestFlagAt: new Date().toISOString(),
+                            verdict,
+                            reason
+                        };
+                    }
+                    return session;
+                });
+            });
+        });
+
+        return () => {
+            disconnectSocket();
+        };
+    }, [showToast]);
 
     const handleToggleStatus = async (examId: string, currentStatus: string) => {
         let nextStatus: 'draft' | 'active' | 'closed' = 'active';
