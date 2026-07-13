@@ -69,10 +69,12 @@ async function getSignedUrl(imagePath) {
                 'Content-Type': 'application/json'
             }
         });
-        if (response.data && response.data.signedURL) {
-            return response.data.signedURL;
-        } else if (response.data && response.data.signedUrl) {
-            return response.data.signedUrl;
+        let signedUrl = response.data && (response.data.signedURL || response.data.signedUrl);
+        if (signedUrl) {
+            if (signedUrl.startsWith('/')) {
+                signedUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1${signedUrl}`;
+            }
+            return signedUrl;
         }
     } catch (err) {
         const details = err.response && err.response.data ? JSON.stringify(err.response.data) : 'No extra details';
