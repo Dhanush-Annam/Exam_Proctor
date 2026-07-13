@@ -22,7 +22,8 @@ const supabaseBucket = process.env.SUPABASE_BUCKET || 'proctor-screenshots';
 const proctorLimiter = rateLimit({
     windowMs: 1 * 60 * 1000,
     max: 45,
-    message: { error: 'Too many frame submissions, please slow down.' }
+    message: { error: 'Too many frame submissions, please slow down.' },
+    validate: { trustProxy: false }
 });
 
 function verifySignature(req, res, next) {
@@ -31,7 +32,9 @@ function verifySignature(req, res, next) {
         return res.status(401).json({ error: 'Webhook signature missing' });
     }
     const hmac = crypto.createHmac('sha256', webhookSecret);
-    const computedSignature = hmac.update(JSON.stringify(req.body)).digest('hex');
+    // Use rawBody buffer if available to avoid key-ordering stringify mismatches between Python and Node
+    const rawBody = req.rawBody ? req.rawBody : JSON.stringify(req.body);
+    const computedSignature = hmac.update(rawBody).digest('hex');
     if (signature !== computedSignature) {
         return res.status(403).json({ error: 'Invalid webhook signature' });
     }
@@ -51,6 +54,9 @@ async function getSignedUrl(imagePath) {
         } else {
             return imagePath;
         }
+    } else {
+        // If it's a local/non-http path, return it directly instead of requesting Supabase signing (which would 400 Bad Request)
+        return imagePath;
     }
     try {
         const url = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/sign/${supabaseBucket}/${relativePath}`;
