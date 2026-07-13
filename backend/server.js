@@ -31,7 +31,11 @@ initSocket(server);
 
 // Middleware
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000' }));
-app.use(express.json());
+app.use(express.json({
+    verify: (req, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 app.use('/api/proctor/static', express.static(path.join(__dirname, '../ai-service')));
 
 // Routes
@@ -47,14 +51,30 @@ app.get('/health', (req, res) => {
 let lastPrewarmTime = 0;
 const PREWARM_COOLDOWN = 2 * 60 * 1000; // 2 minutes in ms
 
+async function prewarmService(url, retries = 4, delay = 6000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            await axios.get(`${url}/health`);
+            console.log('AI Service prewarmed successfully');
+            return;
+        } catch (err) {
+            const is502 = err.response && err.response.status === 502;
+            if (i === retries - 1) {
+                console.warn(`AI Service prewarm ping failed after ${retries} attempts:`, err.message);
+            } else {
+                console.log(`AI Service prewarm attempt ${i + 1} failed (${is502 ? '502 Bad Gateway / Wake-up in progress' : err.message}). Retrying in ${delay / 1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+}
+
 // Dedicated Prewarm endpoint (triggered once when frontend mounts)
 app.get('/api/prewarm', (req, res) => {
     const now = Date.now();
     if (process.env.AI_SERVICE_URL && (now - lastPrewarmTime > PREWARM_COOLDOWN)) {
         lastPrewarmTime = now;
-        axios.get(`${process.env.AI_SERVICE_URL}/health`)
-            .then(() => console.log('AI Service prewarmed successfully'))
-            .catch((err) => console.warn('AI Service prewarm ping failed:', err.message));
+        prewarmService(process.env.AI_SERVICE_URL);
     }
     res.json({ status: 'ok', message: 'Prewarming initiated' });
 });
