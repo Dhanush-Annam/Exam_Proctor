@@ -14,6 +14,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: exam_proctor_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
   ai-service:
     build: ./ai-service
     container_name: exam_proctor_ai
@@ -23,10 +30,13 @@ services:
     environment:
       - GEMINI_API_KEY=your_gemini_api_key_here
       - BACKEND_URL=http://backend:3001
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - flags_data:/app/flags
     depends_on:
       - postgres
+      - redis
 
   backend:
     build: ./backend
