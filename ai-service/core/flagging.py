@@ -3,23 +3,77 @@ import os
 import json
 import time
 from datetime import datetime
+import redis
+
+redis_url = os.environ.get("REDIS_URL")
+redis_host = os.environ.get("REDIS_HOST")
+redis_port = int(os.environ.get("REDIS_PORT", 6379))
+redis_client = None
+
+if redis_url:
+    try:
+        redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+        redis_client.ping()
+        print(f"[Redis] Connected successfully via REDIS_URL")
+    except Exception as e:
+        print(f"[Redis] Connection error via REDIS_URL: {e}. Falling back to local in-memory store.")
+        redis_client = None
+elif redis_host:
+    try:
+        redis_client = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
+        redis_client.ping()
+        print(f"[Redis] Connected successfully to {redis_host}:{redis_port}")
+    except Exception as e:
+        print(f"[Redis] Connection error to {redis_host}:{redis_port}: {e}. Falling back to local in-memory store.")
+        redis_client = None
 
 class FlagManager:
     def __init__(self, session_id, flags_root="flags"):
         self.session_id  = session_id
         self.flags_dir   = os.path.join(flags_root, session_id)
+        os.makedirs(self.flags_dir, exist_ok=True)
+        self._load_state()
+
+    def _load_state(self):
+        global redis_client
+        if redis_client:
+            try:
+                state_json = redis_client.get(f"proctor:session:{self.session_id}:state")
+                if state_json:
+                    state = json.loads(state_json)
+                    self.flag_counter = state.get("flag_counter", 0)
+                    self.last_alert_times = state.get("last_alert_times", {})
+                    self.flags = state.get("flags", [])
+                    return
+            except Exception as e:
+                print(f"[Redis] Error loading state for {self.session_id}: {e}")
+        
         self.flag_counter = 0
         self.last_alert_times = {}
-        self.flags       = []
-        os.makedirs(self.flags_dir, exist_ok=True)
+        self.flags = []
+
+    def _save_state(self):
+        global redis_client
+        if redis_client:
+            try:
+                state = {
+                    "flag_counter": self.flag_counter,
+                    "last_alert_times": self.last_alert_times,
+                    "flags": self.flags
+                }
+                redis_client.setex(f"proctor:session:{self.session_id}:state", 86400, json.dumps(state))
+            except Exception as e:
+                print(f"[Redis] Error saving state for {self.session_id}: {e}")
 
     def can_fire(self, alert_type, cooldown=3.0):
+        self._load_state()
         now  = time.time()
         last = self.last_alert_times.get(alert_type, 0)
         return (now - last) > cooldown
 
     def save(self, frame, alert_type, detail="",
              ear=None, yaw=None, pitch=None):
+        self._load_state()
         if not self.can_fire(alert_type):
             return None
 
@@ -65,9 +119,9 @@ class FlagManager:
                     )
                     with urllib.request.urlopen(req) as response:
                         if response.status in [200, 201]:
-                            public_url = f"{supabase_url}/storage/v1/object/public/{supabase_bucket}/{destination_path}"
-                            image_path = public_url
-                            print(f"[Supabase] Screenshot uploaded successfully: {public_url}")
+                            private_url = f"{supabase_url}/storage/v1/object/{supabase_bucket}/{destination_path}"
+                            image_path = private_url
+                            print(f"[Supabase] Screenshot uploaded successfully to private storage: {private_url}")
             except Exception as e:
                 import urllib.error
                 if isinstance(e, urllib.error.HTTPError):
@@ -93,6 +147,7 @@ class FlagManager:
         }
         self.flags.append(entry)
         self._save_report()
+        self._save_state()
         return entry
 
     def _upload_report_to_supabase(self, report):
@@ -159,6 +214,7 @@ class FlagManager:
         self._upload_report_to_supabase(report)
 
     def end(self):
+        self._load_state()
         report = {
             "session_id" : self.session_id,
             "end_time"   : datetime.now().isoformat(),
@@ -169,4 +225,14 @@ class FlagManager:
         with open(path, "w") as f:
             json.dump(report, f, indent=2)
         self._upload_report_to_supabase(report)
+
+        # Clear Redis state since session has ended
+        global redis_client
+        if redis_client:
+            try:
+                redis_client.delete(f"proctor:session:{self.session_id}:state")
+                redis_client.delete(f"proctor:session:{self.session_id}:ear_counter")
+            except Exception as e:
+                print(f"[Redis] Error clearing state for {self.session_id}: {e}")
+
         return report

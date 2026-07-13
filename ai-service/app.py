@@ -38,17 +38,57 @@ ear_detector  = EARDetector(threshold=0.15, consec_frames=8)
 gaze_detector = GazeDetector()
 
 # ── Session State ────────────────────────────────────────
-sessions      = {}
-sessions_lock = threading.Lock()
+import redis
 
-def get_session(session_id: str):
-    with sessions_lock:
-        if session_id not in sessions:
-            sessions[session_id] = {
-                "flag_manager": FlagManager(session_id),
-                "ear_counter" : 0,
-            }
-        return sessions[session_id]
+redis_url = os.environ.get("REDIS_URL")
+redis_host = os.environ.get("REDIS_HOST")
+redis_port = int(os.environ.get("REDIS_PORT", 6379))
+redis_client = None
+
+if redis_url:
+    try:
+        redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
+        redis_client.ping()
+        print(f"[Redis] Connected successfully in app.py via REDIS_URL")
+    except Exception as e:
+        print(f"[Redis] Connection error in app.py via REDIS_URL: {e}. Falling back to in-memory fallback store.")
+        redis_client = None
+elif redis_host:
+    try:
+        redis_client = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
+        redis_client.ping()
+        print(f"[Redis] Connected successfully in app.py to {redis_host}:{redis_port}")
+    except Exception as e:
+        print(f"[Redis] Connection error in app.py to {redis_host}:{redis_port}: {e}. Falling back to in-memory fallback store.")
+        redis_client = None
+
+local_sessions = {}
+local_sessions_lock = threading.Lock()
+
+def get_ear_counter(session_id: str) -> int:
+    global redis_client
+    if redis_client:
+        try:
+            val = redis_client.get(f"proctor:session:{session_id}:ear_counter")
+            if val is not None:
+                return int(val)
+        except Exception as e:
+            print(f"[Redis] Error getting ear_counter: {e}")
+    with local_sessions_lock:
+        return local_sessions.get(session_id, {}).get("ear_counter", 0)
+
+def set_ear_counter(session_id: str, count: int):
+    global redis_client
+    if redis_client:
+        try:
+            redis_client.setex(f"proctor:session:{session_id}:ear_counter", 86400, count)
+            return
+        except Exception as e:
+            print(f"[Redis] Error setting ear_counter: {e}")
+    with local_sessions_lock:
+        if session_id not in local_sessions:
+            local_sessions[session_id] = {}
+        local_sessions[session_id]["ear_counter"] = count
 
 # ── Routes ───────────────────────────────────────────────
 
@@ -61,8 +101,8 @@ async def analyze(
     frame     : UploadFile = File(...),
     session_id: str        = Form(...)
 ):
-    session     = get_session(session_id)
-    flag_manager = session["flag_manager"]
+    flag_manager = FlagManager(session_id)
+    ear_counter  = get_ear_counter(session_id)
 
     # Decode frame
     contents = await frame.read()
@@ -82,8 +122,10 @@ async def analyze(
     face_count = face_detector.count_faces(img)
 
     # ── EAR ──────────────────────────────────────────────
-    ear, is_closed, session["ear_counter"], landmarks = \
-        ear_detector.process(rgb, session["ear_counter"])
+    ear, is_closed, new_ear_counter, landmarks = \
+        ear_detector.process(rgb, ear_counter)
+    
+    set_ear_counter(session_id, new_ear_counter)
 
     if is_closed:
         alerts.append("EYES_CLOSED")
@@ -150,7 +192,7 @@ def ensure_local_report(session_id: str) -> bool:
     if supabase_url and supabase_key:
         try:
             supabase_url = supabase_url.rstrip("/")
-            download_url = f"{supabase_url}/storage/v1/object/public/{supabase_bucket}/{session_id}/session_report.json"
+            download_url = f"{supabase_url}/storage/v1/object/{supabase_bucket}/{session_id}/session_report.json"
             import urllib.request
             req = urllib.request.Request(
                 download_url,
@@ -182,6 +224,8 @@ def get_report(session_id: str):
 
 def run_review_and_callback(session_dir: Path, session_id: str):
     import urllib.request
+    import hmac
+    import hashlib
     # 3. Run the review script logic (review.py automatically handles Gemini Client initialization)
     if GEMINI_API_KEY:
         report = process_session(session_dir, dry_run=False)
@@ -190,12 +234,26 @@ def run_review_and_callback(session_dir: Path, session_id: str):
         
     # 4. Callback to backend
     try:
+        webhook_secret = os.environ.get("WEBHOOK_SECRET", "super-secret-webhook-key")
+        payload_bytes = json.dumps(report, separators=(',', ':')).encode('utf-8')
+        
+        # Calculate HMAC SHA256 signature
+        sig = hmac.new(
+            webhook_secret.encode('utf-8'),
+            payload_bytes,
+            hashlib.sha256
+        ).hexdigest()
+
         backend_url = os.environ.get("BACKEND_URL", "http://localhost:3001")
         url = f"{backend_url}/api/proctor/session/{session_id}/review-complete"
+        
         req = urllib.request.Request(
             url,
-            data=json.dumps(report).encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
+            data=payload_bytes,
+            headers={
+                'Content-Type': 'application/json',
+                'x-webhook-signature': sig
+            },
             method='POST'
         )
         with urllib.request.urlopen(req) as response:
@@ -206,11 +264,12 @@ def run_review_and_callback(session_dir: Path, session_id: str):
 @app.post("/session/{session_id}/end")
 def end_session(session_id: str, background_tasks: BackgroundTasks):
     # 1. End the active session if in memory to write the initial report
-    with sessions_lock:
-        session = sessions.get(session_id)
-        if session:
-            session["flag_manager"].end()
-            del sessions[session_id]
+    flag_manager = FlagManager(session_id)
+    flag_manager.end()
+    
+    with local_sessions_lock:
+        if session_id in local_sessions:
+            del local_sessions[session_id]
             
     # 2. Check if the directory and report exist (checks local and pulls from Supabase if needed)
     if not ensure_local_report(session_id):

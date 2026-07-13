@@ -109,7 +109,12 @@ def call_gemini(image_path: str, prompt: str) -> dict:
     
     try:
         if image_path.startswith("http://") or image_path.startswith("https://"):
-            with urllib.request.urlopen(image_path) as response:
+            supabase_key = os.environ.get("SUPABASE_KEY")
+            req = urllib.request.Request(image_path)
+            if supabase_key and "supabase.co" in image_path:
+                req.add_header("apikey", supabase_key)
+                req.add_header("Authorization", f"Bearer {supabase_key}")
+            with urllib.request.urlopen(req) as response:
                 img = Image.open(BytesIO(response.read()))
         else:
             img = Image.open(image_path)
