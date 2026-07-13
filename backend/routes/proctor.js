@@ -32,10 +32,10 @@ function verifySignature(req, res, next) {
         return res.status(401).json({ error: 'Webhook signature missing' });
     }
     const hmac = crypto.createHmac('sha256', webhookSecret);
-    // Use rawBody buffer if available to avoid key-ordering stringify mismatches between Python and Node
     const rawBody = req.rawBody ? req.rawBody : JSON.stringify(req.body);
     const computedSignature = hmac.update(rawBody).digest('hex');
     if (signature !== computedSignature) {
+        console.warn(`[Webhook Verification Failed] Expected signature: ${computedSignature}, Received signature: ${signature}. rawBody length: ${rawBody ? rawBody.length : 0}. Secret length: ${webhookSecret ? webhookSecret.length : 0}`);
         return res.status(403).json({ error: 'Invalid webhook signature' });
     }
     next();
@@ -75,7 +75,8 @@ async function getSignedUrl(imagePath) {
             return response.data.signedUrl;
         }
     } catch (err) {
-        console.error(`Failed to get signed URL for ${relativePath}:`, err.message);
+        const details = err.response && err.response.data ? JSON.stringify(err.response.data) : 'No extra details';
+        console.error(`Failed to get signed URL for ${relativePath}:`, err.message, `Details: ${details}`);
     }
     return imagePath;
 }
