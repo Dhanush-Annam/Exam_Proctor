@@ -47,7 +47,10 @@ redis_client = None
 
 if redis_url:
     try:
-        redis_client = redis.Redis.from_url(redis_url, decode_responses=True, ssl_cert_reqs=None)
+        kwargs = {"decode_responses": True}
+        if redis_url.startswith("rediss://"):
+            kwargs["ssl_cert_reqs"] = None
+        redis_client = redis.Redis.from_url(redis_url, **kwargs)
         redis_client.ping()
         print(f"[Redis] Connected successfully in app.py via REDIS_URL")
     except Exception as e:
