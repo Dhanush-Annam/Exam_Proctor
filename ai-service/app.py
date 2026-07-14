@@ -49,7 +49,7 @@ if redis_url:
     try:
         kwargs = {"decode_responses": True}
         if redis_url.startswith("rediss://"):
-            kwargs["ssl_cert_reqs"] = None
+            kwargs["ssl_cert_reqs"] = "none"
         redis_client = redis.Redis.from_url(redis_url, **kwargs)
         redis_client.ping()
         print(f"[Redis] Connected successfully in app.py via REDIS_URL")
