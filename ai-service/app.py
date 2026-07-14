@@ -95,6 +95,10 @@ def set_ear_counter(session_id: str, count: int):
 
 # ── Routes ───────────────────────────────────────────────
 
+@app.get("/")
+def read_root():
+    return {"status": "ok", "service": "Proctor AI Service"}
+
 @app.get("/health")
 def health():
     return {"status": "ok", "message": "Proctor AI service running"}
