@@ -2,6 +2,14 @@ const request = require('supertest');
 const express = require('express');
 const crypto = require('crypto');
 
+// Import models index first to prevent circular dependency issues during Jest module loading
+require('../models/index');
+
+const Flag = require('../models/Flag');
+Flag.findAll = jest.fn(() => Promise.resolve([]));
+Flag.create = jest.fn(() => Promise.resolve({ id: 'flag-id' }));
+Flag.update = jest.fn(() => Promise.resolve([1]));
+
 // Create a mock app to isolate testing the proctor router
 const app = express();
 app.use(express.json());
@@ -11,12 +19,6 @@ jest.mock('../middleware/auth', () => (req, res, next) => {
     req.user = { id: 'mock-user-id', role: 'examiner' };
     next();
 });
-
-jest.mock('../models/Flag', () => ({
-    findAll: jest.fn(() => Promise.resolve([])),
-    create: jest.fn(() => Promise.resolve({ id: 'flag-id' })),
-    update: jest.fn(() => Promise.resolve([1]))
-}));
 
 const proctorRouter = require('../routes/proctor');
 app.use('/api/proctor', proctorRouter);
