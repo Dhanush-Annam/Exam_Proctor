@@ -23,13 +23,23 @@ router.post('/', auth, async (req, res) => {
     }
 });
 
-// Get all active exams (student)
+// Get all active exams (student listing)
 router.get('/', auth, async (req, res) => {
     try {
         const exams = await Exam.findAll({ where: { status: 'active' } });
         const submissions = await Submission.findAll({ where: { student_id: req.user.id } });
         const submittedExamIds = submissions.map(s => s.exam_id);
-        const filteredExams = exams.filter(e => !submittedExamIds.includes(e.id.toString()) && !submittedExamIds.includes(e.id));
+
+        const filteredExams = exams
+            .filter(e => !submittedExamIds.includes(e.id.toString()) && !submittedExamIds.includes(e.id))
+            .map(e => {
+                const data = e.toJSON ? e.toJSON() : { ...e };
+                // Strip all question text, options, and answer keys
+                // Provide empty question stubs solely so frontend card can render question count (.length)
+                data.questions = (data.questions || []).map((_, idx) => ({ id: idx }));
+                return data;
+            });
+
         res.json(filteredExams);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -97,7 +107,7 @@ router.patch('/:id/status', auth, async (req, res) => {
     }
 });
 
-// Get single exam
+// Get single exam (sanitizes questions for students; verifies ownership for examiners)
 router.get('/:id', auth, async (req, res) => {
     try {
         const exam = await Exam.findByPk(req.params.id);
@@ -108,28 +118,60 @@ router.get('/:id', auth, async (req, res) => {
             if (exam.created_by !== req.user.id) {
                 return res.status(403).json({ error: 'Unauthorized to view this exam' });
             }
+            // Examiners can view the authoritative exam definition including questions & answers
+            return res.json(exam);
         } else if (req.user.role === 'student') {
+            // Require active status - students cannot access draft or closed exams
+            if (exam.status !== 'active') {
+                return res.status(403).json({ error: 'Exam is not currently active' });
+            }
+
             const submission = await Submission.findOne({
                 where: { student_id: req.user.id, exam_id: req.params.id }
             });
             if (submission) {
                 return res.status(403).json({ error: 'You have already submitted this exam' });
             }
+
+            // CRITICAL: Sanitize questions before sending to student client
+            // Strip out answer, correctAnswer, and any answer-key attributes
+            const rawQuestions = Array.isArray(exam.questions) ? exam.questions : [];
+            const sanitizedQuestions = rawQuestions.map((q, idx) => ({
+                id: q.id !== undefined ? q.id : idx,
+                question: q.question || '',
+                options: Array.isArray(q.options) ? q.options : []
+            }));
+
+            const examData = exam.toJSON();
+            examData.questions = sanitizedQuestions;
+            return res.json(examData);
+        } else {
+            return res.status(403).json({ error: 'Unauthorized role' });
         }
-        res.json(exam);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// Submit exam
+// Submit exam (strictly server-side graded, student only, active exam only)
 router.post('/:id/submit', auth, async (req, res) => {
     try {
+        if (req.user.role !== 'student') {
+            return res.status(403).json({ error: 'Only students can submit exams' });
+        }
+
         const { answers, session_id } = req.body;
+        if (!session_id || typeof session_id !== 'string') {
+            return res.status(400).json({ error: 'Valid session_id is required' });
+        }
 
         const exam = await Exam.findByPk(req.params.id);
         if (!exam)
             return res.status(404).json({ error: 'Exam not found' });
+
+        if (exam.status !== 'active') {
+            return res.status(403).json({ error: 'Cannot submit to an inactive exam' });
+        }
 
         const existingSubmission = await Submission.findOne({
             where: { student_id: req.user.id, exam_id: req.params.id }
@@ -138,26 +180,35 @@ router.post('/:id/submit', auth, async (req, res) => {
             return res.status(400).json({ error: 'You have already submitted this exam' });
         }
 
-        // Auto grade
-        const questions      = exam.questions;
-        let correct_answers  = 0;
+        // Authoritative server-side grading using DB answer keys
+        const questions = Array.isArray(exam.questions) ? exam.questions : [];
+        let correct_answers = 0;
 
         questions.forEach((q, i) => {
-            if (answers[i] && answers[i] === q.answer) {
+            const studentAns = answers && answers[i];
+            const correctAns = q.answer || q.correctAnswer;
+            if (studentAns && correctAns && String(studentAns).trim() === String(correctAns).trim()) {
                 correct_answers++;
             }
         });
 
-        const score = (correct_answers / questions.length) * 100;
+        const score = questions.length > 0 ? (correct_answers / questions.length) * 100 : 0;
 
-        // Count flags for this session
-        const total_flags = await Flag.count({ where: { session_id } });
+        // Authoritative server-side flag calculation for this student & session
+        const total_flags = await Flag.count({
+            where: {
+                session_id,
+                student_id: req.user.id
+            }
+        });
 
+        // Create submission: student_id is strictly bound to req.user.id
+        // Client-supplied score or correct_answers are completely ignored
         const submission = await Submission.create({
             student_id      : req.user.id,
             exam_id         : req.params.id,
             session_id,
-            answers,
+            answers         : answers || {},
             score,
             total_questions : questions.length,
             correct_answers,
