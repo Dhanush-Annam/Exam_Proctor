@@ -82,7 +82,10 @@ app.get('/api/prewarm', (req, res) => {
 // DB sync + start server
 const PORT = process.env.PORT || 3001;
 
-const shouldAlter = process.env.NODE_ENV !== 'production';
+// Only alter tables if explicitly opted in via DB_SYNC_ALTER=true.
+// In deployment/production, alter: true causes PostgreSQL error 0A000 on columns referenced by RLS policies
+// and creates duplicate constraints on each restart.
+const shouldAlter = process.env.DB_SYNC_ALTER === 'true';
 sequelize.sync({ alter: shouldAlter })
     .then(() => {
         console.log('Database synced');
