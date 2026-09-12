@@ -189,10 +189,29 @@ function calculateSessionVerdict(flags) {
 
 router.post('/analyze', auth, proctorLimiter, upload.single('frame'), async (req, res) => {
     try {
+        if (req.user.role !== 'student') {
+            return res.status(403).json({ error: 'Only students can submit frames for analysis' });
+        }
+
         const { session_id, exam_id } = req.body;
 
         if (!req.file)
             return res.status(400).json({ error: 'No frame provided' });
+
+        if (!session_id || !exam_id)
+            return res.status(400).json({ error: 'session_id and exam_id are required' });
+
+        const exam = await Exam.findByPk(exam_id);
+        if (!exam || exam.status !== 'active') {
+            return res.status(403).json({ error: 'Exam is not currently active' });
+        }
+
+        const existingSubmission = await Submission.findOne({
+            where: { student_id: req.user.id, exam_id }
+        });
+        if (existingSubmission) {
+            return res.status(403).json({ error: 'Exam has already been submitted' });
+        }
 
         // Forward frame to FastAPI
         const form = new FormData();
@@ -367,25 +386,52 @@ router.post('/session/:session_id/review-complete', verifySignature, async (req,
     }
 });
 
-// Get all flags for a session
+// Get all flags for a session (strictly authorized via session/submission/exam ownership)
 router.get('/flags/:session_id', auth, async (req, res) => {
     try {
-        const flags = await Flag.findAll({
-            where: { session_id: req.params.session_id }
-        });
+        const { session_id } = req.params;
 
-        if (flags.length > 0) {
-            if (req.user.role === 'examiner') {
-                const exam = await Exam.findByPk(flags[0].exam_id);
-                if (exam && exam.created_by !== req.user.id) {
-                    return res.status(403).json({ error: 'Unauthorized to view flags for this session' });
-                }
-            } else if (req.user.role === 'student') {
-                if (flags[0].student_id !== req.user.id) {
-                    return res.status(403).json({ error: 'Unauthorized to view flags for this session' });
-                }
+        // Determine session ownership via Submission or Flag
+        const submission = await Submission.findOne({ where: { session_id } });
+        let sessionStudentId = null;
+        let sessionExamId = null;
+
+        if (submission) {
+            sessionStudentId = submission.student_id;
+            sessionExamId = submission.exam_id;
+        } else {
+            // Check flags table if session is in progress before submission
+            const sampleFlag = await Flag.findOne({ where: { session_id } });
+            if (sampleFlag) {
+                sessionStudentId = sampleFlag.student_id;
+                sessionExamId = sampleFlag.exam_id;
             }
         }
+
+        // If neither submission nor flag exists, session is unrecognized
+        if (!sessionStudentId) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        // Authorization check
+        if (req.user.role === 'student') {
+            if (sessionStudentId !== req.user.id) {
+                return res.status(403).json({ error: 'Unauthorized to view flags for this session' });
+            }
+        } else if (req.user.role === 'examiner') {
+            const exam = await Exam.findByPk(sessionExamId);
+            if (!exam || exam.created_by !== req.user.id) {
+                return res.status(403).json({ error: 'Unauthorized to view flags for this session' });
+            }
+        } else {
+            return res.status(403).json({ error: 'Unauthorized role' });
+        }
+
+        // Retrieve flags belonging to this session
+        const flags = await Flag.findAll({
+            where: { session_id },
+            order: [['createdAt', 'ASC']]
+        });
 
         const signedFlags = await Promise.all(flags.map(async (flag) => {
             const flagData = flag.toJSON();
@@ -403,10 +449,27 @@ router.get('/flags/:session_id', auth, async (req, res) => {
 
 router.post('/log-event', auth, async (req, res) => {
     try {
+        if (req.user.role !== 'student') {
+            return res.status(403).json({ error: 'Only students can log proctoring events' });
+        }
+
         const { session_id, exam_id, alert_type, detail } = req.body;
         if (!session_id || !exam_id || !alert_type) {
             return res.status(400).json({ error: 'Missing required parameters' });
         }
+
+        const exam = await Exam.findByPk(exam_id);
+        if (!exam || exam.status !== 'active') {
+            return res.status(403).json({ error: 'Exam is not currently active' });
+        }
+
+        const existingSubmission = await Submission.findOne({
+            where: { student_id: req.user.id, exam_id }
+        });
+        if (existingSubmission) {
+            return res.status(403).json({ error: 'Exam has already been submitted' });
+        }
+
         const { ai_verdict, ai_reason } = getFlagAiVerdict(alert_type, detail);
 
         sendAlert(session_id, {
@@ -416,7 +479,7 @@ router.post('/log-event', auth, async (req, res) => {
 
         await Flag.create({
             session_id,
-            student_id : req.user.id,
+            student_id : req.user.id, // strictly derived from authenticated JWT
             exam_id,
             alert_type,
             detail     : detail || '',

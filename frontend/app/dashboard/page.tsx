@@ -1329,7 +1329,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                 {/* LEFT COLUMN: Simulated Video & Telemetry */}
                                 <div className="lg:col-span-7 flex flex-col gap-4 overflow-y-auto pr-1">
                                     {/* simulated video card */}
-                                    <div className="glass-card rounded-xl overflow-hidden flex flex-col relative grow min-h-[300px] bg-black">
+                                    <div className="glass-card rounded-xl overflow-hidden flex flex-col relative grow min-h-75 bg-black">
                                         <div className="absolute top-3 right-3 z-10 flex gap-2">
                                             <div className="px-2 py-0.5 bg-slate-950/80 backdrop-blur-md rounded border border-outline-variant/30 flex items-center gap-1">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
@@ -1463,7 +1463,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                                                     : 'border-outline-variant/20 bg-slate-950/45 hover:border-slate-800'
                                                             }`}
                                                         >
-                                                            <div className="absolute left-[-21px] top-4 w-2 h-2 rounded-full bg-slate-700 z-10 border border-slate-950" />
+                                                            <div className="absolute -left-5.25 top-4 w-2 h-2 rounded-full bg-slate-700 z-10 border border-slate-950" />
                                                             <div className="flex justify-between items-center">
                                                                 <div className="flex items-center gap-1.5">
                                                                     <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${
