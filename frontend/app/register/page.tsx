@@ -168,13 +168,23 @@ export default function RegisterPage() {
                                     </svg>
                                 </div>
                                 <input
-                                    type="password"
+                                    type="text"
                                     value={form.inviteCode}
                                     onChange={e => setForm({...form, inviteCode: e.target.value})}
-                                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500/80 rounded-xl pl-11 pr-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition duration-250"
-                                    placeholder="Enter examiner authorization code"
+                                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500/80 rounded-xl pl-11 pr-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition duration-250 font-mono text-sm"
+                                    placeholder="EXAM_PROCTOR_EXAMINER_2025"
                                     required
                                 />
+                            </div>
+                            <div className="mt-2 bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-2.5 flex items-center justify-between text-xs text-slate-300">
+                                <span>🔑 Demo code: <code className="bg-slate-900 border border-slate-700/60 px-1.5 py-0.5 rounded text-indigo-300 font-mono text-[11px] select-all">EXAM_PROCTOR_EXAMINER_2025</code></span>
+                                <button
+                                    type="button"
+                                    onClick={() => setForm({ ...form, inviteCode: 'EXAM_PROCTOR_EXAMINER_2025' })}
+                                    className="text-xs bg-indigo-600/80 hover:bg-indigo-600 text-white px-2 py-0.5 rounded font-semibold transition cursor-pointer"
+                                >
+                                    Use Code
+                                </button>
                             </div>
                         </div>
                     )}
