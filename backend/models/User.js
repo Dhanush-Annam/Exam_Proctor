@@ -24,6 +24,16 @@ const User = sequelize.define('User', {
         type         : DataTypes.ENUM('student', 'examiner'),
         defaultValue : 'student'
     }
-}, { timestamps: true });
+}, {
+    timestamps: true,
+    defaultScope: {
+        attributes: { exclude: ['password'] }
+    },
+    scopes: {
+        withPassword: {
+            attributes: ['id', 'name', 'email', 'password', 'role', 'createdAt', 'updatedAt']
+        }
+    }
+});
 
 module.exports = User;

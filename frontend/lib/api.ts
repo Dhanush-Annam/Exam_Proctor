@@ -16,7 +16,7 @@ export default API;
 // ── Auth ─────────────────────────────────────────────────
 export const register = (data: {
     name: string, email: string,
-    password: string, role: string
+    password: string, role: string, inviteCode?: string
 }) => API.post('/api/auth/register', data);
 
 export const login = (data: {

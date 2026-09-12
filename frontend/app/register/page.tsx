@@ -7,7 +7,7 @@ import { register } from '@/lib/api';
 export default function RegisterPage() {
     const router = useRouter();
     const [form, setForm] = useState({
-        name: '', email: '', password: '', role: 'student'
+        name: '', email: '', password: '', role: 'student', inviteCode: ''
     });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
@@ -155,6 +155,29 @@ export default function RegisterPage() {
                             </div>
                         </div>
                     </div>
+
+                    {form.role === 'examiner' && (
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                                Examiner Invite Code
+                            </label>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                    </svg>
+                                </div>
+                                <input
+                                    type="password"
+                                    value={form.inviteCode}
+                                    onChange={e => setForm({...form, inviteCode: e.target.value})}
+                                    className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500/80 rounded-xl pl-11 pr-4 py-2.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition duration-250"
+                                    placeholder="Enter examiner authorization code"
+                                    required
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     <button
                         type="submit"
