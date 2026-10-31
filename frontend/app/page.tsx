@@ -1,114 +1,188 @@
 import Link from 'next/link';
+import Navbar from '@/components/Navbar';
+import { ArrowRight, Eye, ShieldCheck, Cpu, Terminal, CheckCircle2 } from 'lucide-react';
 
 export default function Home() {
     return (
-        <main className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-indigo-500 selection:text-white relative overflow-hidden">
-            {/* Ambient Background Glows */}
-            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/10 blur-[120px] pointer-events-none" />
+        <main className="min-h-screen bg-canvas text-primary-text flex flex-col justify-between selection:bg-accent selection:text-white">
+            <Navbar showTelemetry={true} />
 
-            {/* Header / Nav */}
-            <header className="page-container py-5 sm:py-6 flex justify-between items-center relative z-10">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
-                        <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                    </div>
-                    <span className="text-xl font-bold tracking-tight bg-linear-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-                        ExamProctor <span className="text-indigo-400 font-semibold text-sm px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 ml-1">AI</span>
-                    </span>
-                </div>
-                <div className="flex gap-4">
-                    <Link href="/login" className="inline-flex items-center justify-center px-5 py-2 text-sm font-medium text-slate-300 hover:text-white transition duration-200">
-                        Sign In
-                    </Link>
-                    <Link href="/register" className="inline-flex items-center justify-center px-5 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-600/20 hover:shadow-indigo-500/35 transition duration-200">
-                        Register
-                    </Link>
-                </div>
-            </header>
-
-            {/* Hero Section */}
-            <div className="page-container page-section flex flex-col items-center text-center relative z-10 flex-1 justify-center">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold uppercase tracking-wider mb-6 animate-pulse">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                    Next-Gen Academic Integrity
-                </div>
-                
-                <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight leading-tight md:leading-tight mb-6">
-                    AI-Powered Examinations
-                    <span className="block mt-2 bg-linear-to-r from-indigo-400 via-violet-400 to-purple-400 bg-clip-text text-transparent">
-                        With Real-Time Proctoring
-                    </span>
-                </h1>
-                
-                <p className="text-lg md:text-xl text-slate-400 max-w-2xl mb-10 leading-relaxed">
-                    A secure, automated examination platform leveraging advanced facial modeling, eye tracking, and smart behavior verification to ensure academic honesty.
-                </p>
-
-                <div className="flex flex-col sm:flex-row gap-4 mb-16 sm:mb-20">
-                    <Link href="/login" className="inline-flex items-center justify-center px-8 py-4 bg-linear-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white font-semibold rounded-2xl shadow-xl shadow-indigo-500/25 hover:shadow-indigo-500/40 transition duration-300 transform hover:-translate-y-0.5">
-                        Get Started Now
-                    </Link>
-                    <Link href="/register" className="inline-flex items-center justify-center px-8 py-4 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-200 font-semibold rounded-2xl transition duration-300 backdrop-blur-md">
-                        Examiner Portal
-                    </Link>
-                </div>
-
-                {/* Features Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-6 w-full max-w-5xl text-left">
-                    {[
-                        { 
-                            title: "Face Detection", 
-                            desc: "Real-time face presence monitoring and verification checks.",
-                            icon: (
-                                <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                            )
-                        },
-                        { 
-                            title: "Gaze Tracking", 
-                            desc: "AI-powered eye focus analysis and head position tracking.",
-                            icon: (
-                                <svg className="w-6 h-6 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                            )
-                        },
-                        { 
-                            title: "Smart Review", 
-                            desc: "Immediate recording and reporting of suspicious events on a neat dashboard.",
-                            icon: (
-                                <svg className="w-6 h-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                </svg>
-                            )
-                        }
-                    ].map((f) => (
-                        <div key={f.title} className="card-surface p-6 sm:p-7 backdrop-blur-md hover:border-slate-700/80 hover:bg-slate-900/70 transition duration-300 group">
-                            <div className="w-12 h-12 rounded-xl bg-slate-950/60 flex items-center justify-center mb-5 border border-slate-800 group-hover:scale-110 transition duration-300">
-                                {f.icon}
-                            </div>
-                            <h3 className="font-semibold text-lg text-slate-100 mb-2 group-hover:text-white transition duration-200">
-                                {f.title}
-                            </h3>
-                            <p className="text-slate-400 text-sm leading-relaxed">{f.desc}</p>
+            {/* Asymmetric Hero Section */}
+            <div className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex-1 flex flex-col justify-center">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+                    
+                    {/* Left Column: Clear, Non-Hype Headline & Actions */}
+                    <div className="lg:col-span-7 flex flex-col items-start">
+                        <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-card border border-white/8 text-secondary-text text-xs font-mono mb-6">
+                            <span className="w-1.5 h-1.5 rounded-full bg-semantic-positive"></span>
+                            <span>Continuous exam telemetry v2.4</span>
                         </div>
-                    ))}
+
+                        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-medium tracking-tight text-primary-text leading-[1.08] mb-6">
+                            Automated integrity monitoring for online examinations
+                        </h1>
+
+                        <p className="text-base sm:text-lg text-secondary-text max-w-xl mb-8 leading-relaxed">
+                            Continuous facial detection, gaze vector estimation, and system focus logging to verify remote candidates directly in modern web browsers.
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                            <Link
+                                href="/login"
+                                className="inline-flex items-center justify-center gap-2 h-11 px-6 rounded-md bg-primary-text hover:bg-white text-canvas text-sm font-medium transition-colors"
+                            >
+                                <span>Sign in to exam</span>
+                                <ArrowRight className="w-4 h-4" strokeWidth={1.5} />
+                            </Link>
+                            <Link
+                                href="/register"
+                                className="inline-flex items-center justify-center h-11 px-5 rounded-md border border-white/8 bg-card hover:bg-raised text-primary-text text-sm font-medium transition-colors"
+                            >
+                                Examiner registration
+                            </Link>
+                        </div>
+
+                        {/* Factual spec tags */}
+                        <div className="grid grid-cols-3 gap-6 pt-10 mt-10 border-t border-white/8 w-full max-w-lg text-xs font-mono text-muted-text">
+                            <div>
+                                <span className="block text-sm font-medium text-primary-text tabular-nums">0 MB</span>
+                                <span className="text-[11px]">No plugins required</span>
+                            </div>
+                            <div>
+                                <span className="block text-sm font-medium text-primary-text tabular-nums">2.0s</span>
+                                <span className="text-[11px]">Telemetry intervals</span>
+                            </div>
+                            <div>
+                                <span className="block text-sm font-medium text-primary-text tabular-nums">FERPA</span>
+                                <span className="text-[11px]">Compliant logging</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right Column: The Polished Product Telemetry Moment */}
+                    <div className="lg:col-span-5 w-full">
+                        <div className="rounded-xl border border-white/8 bg-deep overflow-hidden shadow-xl">
+                            {/* Terminal Window Header */}
+                            <div className="px-4 py-2.5 bg-canvas border-b border-white/8 flex items-center justify-between text-xs font-mono text-muted-text">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-raised" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-raised" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-raised" />
+                                    <span className="text-[11px] text-secondary-text ml-2">monitor://session-live</span>
+                                </div>
+                                <span className="text-semantic-positive text-[10px] tracking-wider uppercase">Active sensor</span>
+                            </div>
+
+                            {/* Simulated Proctoring Stream */}
+                            <div className="p-4 bg-card relative">
+                                <div className="h-44 rounded-lg bg-deep border border-white/8 relative overflow-hidden flex items-center justify-center">
+                                    {/* Camera wireframe mock */}
+                                    <div className="absolute inset-4 border border-dashed border-accent/40 rounded flex flex-col justify-between p-2 font-mono text-[9px] text-accent/80">
+                                        <div className="flex justify-between">
+                                            <span>FACE_BOUNDS [318, 142, 220, 240]</span>
+                                            <span>CONF: 99.4%</span>
+                                        </div>
+                                        <div className="self-center w-20 h-24 border border-white/20 rounded-full flex items-center justify-center">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-semantic-positive" />
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>GAZE: CENTER</span>
+                                            <span>YAW: -1.2° PITCH: +0.4°</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Live Telemetry Log Lines */}
+                            <div className="p-4 bg-deep border-t border-white/8 font-mono text-xs space-y-2">
+                                <div className="flex items-center justify-between text-[11px] text-muted-text pb-1 border-b border-white/4">
+                                    <span>EVENT FEED</span>
+                                    <span>TIMESTAMP</span>
+                                </div>
+                                <div className="flex items-center justify-between text-secondary-text">
+                                    <span className="flex items-center gap-1.5 truncate">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-semantic-positive shrink-0" strokeWidth={1.5} />
+                                        <span>Candidate identity verified</span>
+                                    </span>
+                                    <span className="text-muted-text text-[10px] tabular-nums">14:02:11.04</span>
+                                </div>
+                                <div className="flex items-center justify-between text-secondary-text">
+                                    <span className="flex items-center gap-1.5 truncate">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-semantic-positive shrink-0" strokeWidth={1.5} />
+                                        <span>Full display capture established</span>
+                                    </span>
+                                    <span className="text-muted-text text-[10px] tabular-nums">14:02:13.20</span>
+                                </div>
+                                <div className="flex items-center justify-between text-secondary-text">
+                                    <span className="flex items-center gap-1.5 truncate">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-accent ml-1 shrink-0" />
+                                        <span className="ml-1">Telemetry stream synchronized</span>
+                                    </span>
+                                    <span className="text-muted-text text-[10px] tabular-nums">14:02:15.33</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                {/* Structured Architectural Modules */}
+                <div className="mt-24 pt-16 border-t border-white/8">
+                    <div className="text-xs font-mono text-muted-text uppercase tracking-wider mb-8">
+                        Verification pipeline
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="p-6 rounded-lg bg-card border border-white/8">
+                            <div className="w-8 h-8 rounded-md bg-raised border border-white/8 flex items-center justify-center mb-4">
+                                <Eye className="w-4 h-4 text-primary-text" strokeWidth={1.5} />
+                            </div>
+                            <h3 className="text-sm font-medium text-primary-text mb-1.5">
+                                Facial presence & head pose
+                            </h3>
+                            <p className="text-xs text-secondary-text leading-relaxed">
+                                Continuous landmark detection verifies candidate presence and flags multiple occupants or prolonged gaze diversion.
+                            </p>
+                        </div>
+
+                        <div className="p-6 rounded-lg bg-card border border-white/8">
+                            <div className="w-8 h-8 rounded-md bg-raised border border-white/8 flex items-center justify-center mb-4">
+                                <Terminal className="w-4 h-4 text-primary-text" strokeWidth={1.5} />
+                            </div>
+                            <h3 className="text-sm font-medium text-primary-text mb-1.5">
+                                System & window interceptors
+                            </h3>
+                            <p className="text-xs text-secondary-text leading-relaxed">
+                                Enforces full-screen lockdowns and detects tab changes, clipboard shortcuts, auxiliary displays, and developer consoles.
+                            </p>
+                        </div>
+
+                        <div className="p-6 rounded-lg bg-card border border-white/8">
+                            <div className="w-8 h-8 rounded-md bg-raised border border-white/8 flex items-center justify-center mb-4">
+                                <Cpu className="w-4 h-4 text-primary-text" strokeWidth={1.5} />
+                            </div>
+                            <h3 className="text-sm font-medium text-primary-text mb-1.5">
+                                Examiner telemetry reviews
+                            </h3>
+                            <p className="text-xs text-secondary-text leading-relaxed">
+                                Flagged sessions populate directly into examiner review feeds with verifiable timestamps and captured frame snapshots.
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Footer */}
-            <footer className="border-t border-slate-900/80 py-8 sm:py-10 relative z-10 bg-slate-950">
-                <div className="page-container flex flex-col sm:flex-row justify-between items-center text-sm text-slate-500 gap-4">
-                    <div>© 2026 ExamProctor AI. All rights reserved.</div>
-                    <div className="flex gap-6">
-                        <a href="#" className="hover:text-slate-300 transition">Terms of Service</a>
-                        <a href="#" className="hover:text-slate-300 transition">Privacy Policy</a>
-                        <a href="#" className="hover:text-slate-300 transition">Support</a>
+            {/* Quiet Footer */}
+            <footer className="border-t border-white/8 bg-deep py-6 text-xs text-muted-text">
+                <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-muted-text" strokeWidth={1.5} />
+                        <span>ExamProctor academic integrity platform</span>
+                    </div>
+                    <div className="flex gap-6 font-mono text-[11px]">
+                        <span>FERPA</span>
+                        <span>GDPR COMPLIANT</span>
+                        <span>SOC2 READY</span>
                     </div>
                 </div>
             </footer>
