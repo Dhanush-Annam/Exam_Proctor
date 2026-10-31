@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import { Shield, Clock, FileText, CheckCircle2, AlertTriangle, ArrowLeft, ArrowRight, Loader2, Check } from 'lucide-react';
 import { getExam, submitExam } from '@/lib/api';
 import WebcamProctor from '@/components/WebcamProctor';
 import ExamTimer from '@/components/ExamTimer';
@@ -42,12 +43,15 @@ export default function ExamPage({ params }: ExamPageProps) {
 
     useEffect(() => {
         const stored = localStorage.getItem('user');
-        if (!stored) { router.push('/login'); return; }
+        if (!stored) {
+            router.push('/login');
+            return;
+        }
         
-        setTimeout(() => {
+        try {
             setUser(JSON.parse(stored));
-            setSessionId(`session_${Date.now()}`);
-        }, 0);
+        } catch {}
+        setSessionId(`session_${Date.now()}`);
 
         getExam(id as string)
             .then(res => setExam(res.data))
@@ -92,7 +96,7 @@ export default function ExamPage({ params }: ExamPageProps) {
 
         const handleFullscreenChange = () => {
             if (!document.fullscreenElement && started && !submitted) {
-                logFlag('FULLSCREEN_EXIT', 'Exited fullscreen mode');
+                logFlag('FULLSCREEN_EXIT', 'Candidate exited full-screen mode');
             }
         };
 
@@ -106,7 +110,7 @@ export default function ExamPage({ params }: ExamPageProps) {
 
         const handleVisibilityChange = () => {
             if (document.hidden && !submitted) {
-                logFlag('TAB_SWITCH', 'Student switched tabs or minimized browser');
+                logFlag('TAB_SWITCH', 'Exam tab hidden or minimized');
             }
         };
 
@@ -139,7 +143,7 @@ export default function ExamPage({ params }: ExamPageProps) {
 
             if (document.fullscreenElement) {
                 if (widthDiff > threshold || heightDiff > threshold) {
-                    logFlag('DEVTOOLS_OPENED', `DevTools panel docked detected (widthDiff: ${widthDiff}px, heightDiff: ${heightDiff}px)`);
+                    logFlag('DEVTOOLS_OPENED', `DevTools panel docked (diff: ${widthDiff}px x ${heightDiff}px)`);
                 }
             }
         };
@@ -159,7 +163,7 @@ export default function ExamPage({ params }: ExamPageProps) {
             })();
             const end = performance.now();
             if (end - start > 100) {
-                logFlag('DEVTOOLS_OPENED', `Debugger loop delayed (latency: ${(end - start).toFixed(1)}ms)`);
+                logFlag('DEVTOOLS_OPENED', `Debugger loop latency: ${(end - start).toFixed(1)}ms`);
             }
         };
 
@@ -174,13 +178,13 @@ export default function ExamPage({ params }: ExamPageProps) {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Meta') {
                 e.preventDefault();
-                logFlag('META_KEY_PRESS', 'Windows/Command key pressed');
+                logFlag('META_KEY_PRESS', 'System key pressed');
                 return;
             }
 
             if (e.key === 'F12') {
                 e.preventDefault();
-                logFlag('DEVTOOLS_OPENED', 'F12 key pressed (Developer Tools)');
+                logFlag('DEVTOOLS_OPENED', 'F12 pressed');
                 return;
             }
 
@@ -188,13 +192,13 @@ export default function ExamPage({ params }: ExamPageProps) {
             const isInspectShortcut = (e.ctrlKey && e.shiftKey && isInspectKey) || (e.metaKey && e.altKey && isInspectKey);
             if (isInspectShortcut) {
                 e.preventDefault();
-                logFlag('DEVTOOLS_OPENED', `DevTools key shortcut detected: Ctrl/Cmd + Shift + ${e.key.toUpperCase()}`);
+                logFlag('DEVTOOLS_OPENED', `Inspect shortcut: Ctrl/Cmd + Shift + ${e.key.toUpperCase()}`);
                 return;
             }
 
             if ((e.ctrlKey && e.key.toLowerCase() === 'u') || (e.metaKey && e.altKey && e.key.toLowerCase() === 'u')) {
                 e.preventDefault();
-                logFlag('DEVTOOLS_OPENED', 'View source key shortcut detected');
+                logFlag('DEVTOOLS_OPENED', 'View source shortcut intercepted');
                 return;
             }
 
@@ -202,7 +206,7 @@ export default function ExamPage({ params }: ExamPageProps) {
             const isClipboardShortcut = (e.ctrlKey && isClipboardKey) || (e.metaKey && isClipboardKey);
             if (isClipboardShortcut) {
                 e.preventDefault();
-                logFlag('CLIPBOARD_ACTION', `Prohibited shortcut key combination blocked: Ctrl/Cmd + ${e.key.toUpperCase()}`);
+                logFlag('CLIPBOARD_ACTION', `Clipboard combination blocked: Ctrl/Cmd + ${e.key.toUpperCase()}`);
                 return;
             }
 
@@ -210,14 +214,14 @@ export default function ExamPage({ params }: ExamPageProps) {
             const isSystemShortcut = (e.ctrlKey && isSystemShortcutKey) || (e.metaKey && isSystemShortcutKey);
             if (isSystemShortcut) {
                 e.preventDefault();
-                logFlag('SHORTCUT_BLOCKED', `Prohibited system action blocked: Ctrl/Cmd + ${e.key.toUpperCase()}`);
+                logFlag('SHORTCUT_BLOCKED', `System shortcut blocked: Ctrl/Cmd + ${e.key.toUpperCase()}`);
                 return;
             }
         };
 
         const handleClipboardEvent = (e: Event) => {
             e.preventDefault();
-            logFlag('CLIPBOARD_ACTION', `Clipboard activity intercepted: type=${e.type}`);
+            logFlag('CLIPBOARD_ACTION', `Clipboard activity: ${e.type}`);
         };
 
         const blockContextMenu = (e: MouseEvent) => {
@@ -251,15 +255,15 @@ export default function ExamPage({ params }: ExamPageProps) {
             const settings = track.getSettings();
             if (settings.displaySurface && settings.displaySurface !== 'monitor') {
                 stream.getTracks().forEach(t => t.stop());
-                logFlag('SCREENSHARE_WINDOW_SHARED', 'Attempted to share single window/tab instead of full screen');
-                alert('You MUST share your ENTIRE screen to start the exam. Please try again and select the whole screen.');
+                logFlag('SCREENSHARE_WINDOW_SHARED', 'Window shared instead of entire screen');
+                alert('Entire screen share is required for this examination. Please re-select the entire screen.');
                 return;
             }
 
             screenStreamRef.current = stream;
 
             track.onended = () => {
-                logFlag('SCREENSHARE_STOPPED', 'Screenshare session terminated by the student');
+                logFlag('SCREENSHARE_STOPPED', 'Display capture terminated by user');
             };
 
             try {
@@ -270,8 +274,8 @@ export default function ExamPage({ params }: ExamPageProps) {
 
             setStarted(true);
         } catch (err) {
-            console.error('Screensharing setup error:', err);
-            alert('Entire screen sharing is required to start this exam. Please allow screen capture and try again.');
+            console.error('Display capture error:', err);
+            alert('Entire screen sharing permission is required to launch this exam session.');
         }
     };
 
@@ -294,206 +298,203 @@ export default function ExamPage({ params }: ExamPageProps) {
         }
     };
 
-    if (loading) return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-                <svg className="animate-spin h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                <p className="text-slate-400 font-medium text-sm">Loading examination...</p>
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-canvas flex flex-col items-center justify-center text-muted-text gap-3">
+                <Loader2 className="w-5 h-5 animate-spin text-primary-text" strokeWidth={1.5} />
+                <span className="text-xs font-mono">Initializing assessment environment...</span>
             </div>
-        </div>
-    );
+        );
+    }
 
-    if (submitted) return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
-            <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/10 blur-[120px] pointer-events-none" />
+    // Submitted state
+    if (submitted) {
+        return (
+            <div className="min-h-screen bg-canvas text-primary-text flex items-center justify-center p-6">
+                <div className="w-full max-w-md rounded-xl border border-white/8 bg-card p-8 shadow-xl text-center">
+                    <div className="w-10 h-10 rounded-full bg-semantic-positive/10 border border-semantic-positive/20 text-semantic-positive flex items-center justify-center mx-auto mb-4">
+                        <Check className="w-5 h-5" strokeWidth={2} />
+                    </div>
+                    <h1 className="text-xl font-medium tracking-tight text-primary-text mb-1">
+                        Assessment submitted
+                    </h1>
+                    <p className="text-xs text-secondary-text mb-6">
+                        Responses and telemetry log encrypted and uploaded
+                    </p>
 
-            <div className="glass-card rounded-2xl p-10 max-w-md w-full text-center relative z-10 border border-outline-variant/40 shadow-2xl">
-                <h2 className="text-2xl font-bold text-white mb-2">
-                    Exam Submitted
-                </h2>
-                <p className="text-slate-400 text-sm mb-6">Your answers have been uploaded securely.</p>
-                {result && (
-                    <div className="bg-surface-container-low border border-outline-variant/30 rounded-2xl p-6 mb-8 shadow-inner">
-                        <p className="text-5xl font-black text-primary mb-1">
-                            {result.score?.toFixed(1)}%
-                        </p>
-                        <p className="text-slate-350 text-xs font-semibold uppercase tracking-wider">
-                            Score
-                        </p>
-                        <div className="h-px bg-outline-variant/20 my-4" />
-                        <div className="flex justify-around text-sm">
-                            <div>
-                                <span className="block font-bold text-white">{result.correct_answers}</span>
-                                <span className="text-[10px] text-slate-500 uppercase font-semibold">Correct</span>
+                    {result && (
+                        <div className="rounded-lg border border-white/8 bg-canvas p-5 mb-6 text-left space-y-3 font-mono">
+                            <div className="flex justify-between items-baseline">
+                                <span className="text-xs text-muted-text">SCORE</span>
+                                <span className="text-3xl font-medium text-primary-text tabular-nums">
+                                    {result.score?.toFixed(1)}%
+                                </span>
                             </div>
-                            <div className="w-px bg-outline-variant/20 h-8 self-center" />
-                            <div>
-                                <span className="block font-bold text-white">{result.total_questions}</span>
-                                <span className="text-[10px] text-slate-500 uppercase font-semibold">Total Qs</span>
+                            <div className="h-px bg-white/6" />
+                            <div className="grid grid-cols-2 gap-4 text-xs">
+                                <div>
+                                    <span className="text-[10px] text-muted-text block">CORRECT</span>
+                                    <span className="text-sm font-medium text-primary-text tabular-nums">
+                                        {result.correct_answers} / {result.total_questions}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] text-muted-text block">INCIDENTS</span>
+                                    <span className={`text-sm font-medium tabular-nums ${result.total_flags > 0 ? 'text-semantic-negative' : 'text-semantic-positive'}`}>
+                                        {result.total_flags} flagged
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                        {result.total_flags > 0 && (
-                            <div className="mt-4 pt-3 border-t border-outline-variant/10">
-                                <p className="text-error text-xs font-bold animate-pulse flex items-center justify-center gap-1">
-                                    ⚠️ {result.total_flags} suspicious events flagged
-                                </p>
-                            </div>
-                        )}
+                    )}
+
+                    <button
+                        type="button"
+                        onClick={() => router.push('/exam')}
+                        className="w-full h-10 rounded-md bg-primary-text hover:bg-white text-canvas text-xs font-medium transition-colors cursor-pointer"
+                    >
+                        Return to assessment list
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // Pre-exam preparation screen
+    if (!started) {
+        return (
+            <div className="min-h-screen bg-canvas text-primary-text flex items-center justify-center p-6">
+                <div className="w-full max-w-lg rounded-xl border border-white/8 bg-card p-8 shadow-xl">
+                    <div className="flex items-center gap-2 text-xs font-mono text-muted-text mb-4">
+                        <Shield className="w-4 h-4 text-accent" strokeWidth={1.5} />
+                        <span>PRE-EXAM TELEMETRY VERIFICATION</span>
                     </div>
-                )}
-                <button
-                    onClick={() => router.push('/exam')}
-                    className="w-full py-3.5 bg-primary text-on-primary rounded-xl font-body-bold hover:bg-primary-container hover:shadow-primary/30 shadow-md transition-all cursor-pointer"
-                >
-                    Back to Exams
-                </button>
+
+                    <h1 className="text-xl font-medium tracking-tight text-primary-text mb-2">
+                        {exam?.title}
+                    </h1>
+
+                    <div className="flex items-center gap-4 text-xs font-mono text-muted-text pb-5 mb-5 border-b border-white/8">
+                        <span className="flex items-center gap-1.5 text-secondary-text">
+                            <Clock className="w-3.5 h-3.5 text-muted-text" strokeWidth={1.5} />
+                            <span className="tabular-nums">{exam?.duration_minutes} minutes</span>
+                        </span>
+                        <span className="flex items-center gap-1.5 text-secondary-text">
+                            <FileText className="w-3.5 h-3.5 text-muted-text" strokeWidth={1.5} />
+                            <span className="tabular-nums">{exam?.questions?.length || 0} questions</span>
+                        </span>
+                    </div>
+
+                    {/* Operational Protocols */}
+                    <div className="rounded-lg p-4 border border-white/8 bg-canvas mb-6 space-y-2 text-xs text-secondary-text">
+                        <div className="text-[11px] font-mono uppercase tracking-wider text-primary-text mb-2 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 text-semantic-warning" strokeWidth={1.5} />
+                            <span>Candidate requirements</span>
+                        </div>
+                        <ul className="space-y-1.5 text-[11px] font-mono text-muted-text list-disc list-inside">
+                            <li>Continuous full-screen display capture is mandatory</li>
+                            <li>Webcam face presence verified every 2.0 seconds</li>
+                            <li>Gaze diversion and tab switches are automatically logged</li>
+                            <li>Single occupant in sensor frame at all times</li>
+                        </ul>
+                    </div>
+
+                    {/* Consent Checkbox */}
+                    <div className="flex items-start gap-3 mb-6">
+                        <input
+                            type="checkbox"
+                            id="consent-check"
+                            checked={consented}
+                            onChange={(e) => setConsented(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 rounded border-white/20 bg-canvas text-accent focus:ring-0 cursor-pointer"
+                        />
+                        <label htmlFor="consent-check" className="text-xs text-muted-text leading-relaxed cursor-pointer select-none">
+                            I authorize temporary streaming and logging of camera telemetry, screen capture, and window events for academic verification (FERPA & GDPR compliant).
+                        </label>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={handleStart}
+                        disabled={!consented}
+                        className="w-full h-11 rounded-md bg-primary-text hover:bg-white text-canvas font-medium text-xs flex items-center justify-center gap-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                        <span>Start proctored session</span>
+                        <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    </button>
+                </div>
             </div>
-        </div>
-    );
-
-    if (!started) return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
-            <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] rounded-full bg-indigo-500/10 blur-[130px] pointer-events-none" />
-            <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] rounded-full bg-violet-600/10 blur-[130px] pointer-events-none" />
-
-            <div className="glass-card rounded-2xl p-8 sm:p-10 max-w-lg w-full relative z-10 border border-outline-variant/40 shadow-2xl">
-                <h2 className="text-3xl font-extrabold text-white mb-2 leading-tight">
-                    {exam?.title}
-                </h2>
-                <div className="flex gap-4 mt-3 mb-6 text-xs font-bold uppercase text-slate-500 tracking-wider">
-                    <span className="text-primary">⏱ {exam?.duration_minutes} minutes</span>
-                    <span className="text-secondary">📋 {exam?.questions?.length || 0} Questions</span>
-                </div>
-
-                <div className="bg-warning/10 border border-warning/30 rounded-xl p-5 mb-6 text-sm text-warning text-left leading-relaxed">
-                    <p className="font-bold mb-2.5 flex items-center gap-1.5 text-warning">
-                        <span>⚠️</span> IMPORTANT INSTRUCTIONS:
-                    </p>
-                    <ul className="space-y-2 list-disc list-inside text-xs opacity-90">
-                        <li>Entire screen sharing is required before beginning</li>
-                        <li>Maintain constant eye contact with the screen</li>
-                        <li>Do not open developer tools or switch browser tabs</li>
-                        <li>Ensure your face is fully lit and centered in frame</li>
-                        <li>No secondary individuals are allowed in frame</li>
-                    </ul>
-                </div>
-
-                {/* GDPR/FERPA Consent Checkbox */}
-                <div className="flex items-start gap-3 mb-8 text-left">
-                    <input
-                        type="checkbox"
-                        id="consent-checkbox"
-                        checked={consented}
-                        onChange={(e) => setConsented(e.target.checked)}
-                        className="mt-1 w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary cursor-pointer"
-                    />
-                    <label htmlFor="consent-checkbox" className="text-xs text-slate-350 leading-normal select-none cursor-pointer">
-                        I consent to the collection, streaming, and temporary storage of my webcam video feed, screen sharing capture, and browser focus metrics solely for exam proctoring and academic integrity verification (GDPR/FERPA compliant).
-                    </label>
-                </div>
-
-                <button
-                    onClick={handleStart}
-                    disabled={!consented}
-                    className={`w-full py-4 rounded-xl font-body-bold text-base transition-all shadow-lg text-on-primary ${
-                        consented
-                            ? 'bg-primary hover:bg-primary-container shadow-primary/20 hover:scale-[1.01] cursor-pointer'
-                            : 'bg-slate-800 text-slate-500 border border-outline-variant/30 cursor-not-allowed'
-                    }`}
-                >
-                    Agree & Start Exam
-                </button>
-            </div>
-        </div>
-    );
+        );
+    }
 
     const currentQuestion = exam?.questions?.[currentQuestionIdx];
 
+    // Live proctored examination interface
     return (
-        <div className="min-h-screen bg-background text-on-background font-body-base antialiased flex flex-col h-screen overflow-hidden">
+        <div className="min-h-screen bg-canvas text-primary-text flex flex-col h-screen overflow-hidden">
+            {/* Docked Alert Banner */}
             <AlertBanner
                 alerts={alerts}
                 onClear={() => setAlerts([])}
             />
 
-            {/* TopNavBar */}
-            <header className="bg-surface-container border-b border-outline-variant/30 backdrop-blur-xl shadow-sm flex justify-between items-center w-full px-margin-desktop h-16 shrink-0 z-50 sticky top-0">
-                <Link href="/" className="flex items-center gap-3 group">
-                    <div className="w-10 h-10 rounded-xl bg-linear-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition duration-200">
-                        <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                        </svg>
-                    </div>
-                    <span className="text-xl font-bold tracking-tight bg-linear-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent flex items-center">
-                        ExamProctor <span className="text-indigo-400 font-semibold text-sm px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 ml-1.5">AI</span>
+            {/* Top Workspace Header (56px) */}
+            <header className="h-14 border-b border-white/8 bg-deep px-6 flex items-center justify-between z-30 shrink-0">
+                <div className="flex items-center gap-4">
+                    <Link href="/" className="flex items-center gap-2 text-xs font-medium text-primary-text hover:text-white">
+                        <Shield className="w-4 h-4 text-accent" strokeWidth={1.5} />
+                        <span className="hidden sm:inline">ExamProctor</span>
+                    </Link>
+                    <span className="text-white/20 hidden sm:inline">/</span>
+                    <span className="text-xs font-mono text-secondary-text truncate max-w-xs">
+                        {exam?.title}
                     </span>
-                </Link>
-                <div className="flex items-center gap-4 sm:gap-6">
-                    {/* Timer */}
+                </div>
+
+                <div className="flex items-center gap-3">
                     <ExamTimer
                         duration_minutes={exam?.duration_minutes || 60}
                         onTimeUp={handleSubmit}
                     />
                     <button
+                        type="button"
                         onClick={handleSubmit}
-                        className="bg-primary/10 text-primary hover:bg-primary/20 hover:scale-95 duration-150 transition-all font-body-bold px-5 py-2 rounded-full border border-primary/30 flex items-center gap-1 text-sm cursor-pointer"
+                        className="h-9 px-4 rounded-md border border-white/8 bg-card hover:bg-raised text-primary-text text-xs font-medium transition-colors cursor-pointer"
                     >
-                        Finish
+                        Submit exam
                     </button>
                 </div>
             </header>
 
+            {/* Main Layout Area */}
             <div className="flex flex-1 overflow-hidden relative">
-                {/* SideNavBar (Question Map Sidebar) */}
-                <nav className="hidden md:flex flex-col h-full w-64 bg-surface-container-low border-r border-outline-variant/30 backdrop-blur-xl shrink-0 z-40 relative">
-                    <div className="p-6 border-b border-outline-variant/30">
-                        <div className="text-label-caps font-label-caps text-on-surface-variant mb-3 uppercase tracking-wider text-[10px]">Session Status</div>
-                        <div className="text-body-bold font-body-bold text-on-surface flex items-center gap-1.5">
-                            <span>Live Proctoring</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                            <span className={`w-2 h-2 rounded-full shadow-[0_0_8px] animate-pulse ${
-                                alerts.length > 0
-                                    ? 'bg-error shadow-error/60'
-                                    : 'bg-success shadow-success/60'
-                            }`}></span>
-                            <span className="text-xs text-on-surface-variant font-medium">
-                                {alerts.length > 0 ? 'AI Flagged Alerts' : 'AI Status: Healthy'}
-                            </span>
-                        </div>
-                        <button
-                            onClick={() => alert('Request logged. A proctor has been notified.')}
-                            className="mt-5 w-full py-2.5 px-4 rounded-lg bg-surface-container-high border border-outline-variant/30 text-primary hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-1.5 text-xs font-semibold cursor-pointer"
-                        >
-                            <span>🙋‍♂️</span> Request Support
-                        </button>
+                {/* Left Telemetry & Question Map Sidebar (260px) */}
+                <aside className="hidden md:flex flex-col h-full w-64 border-r border-white/8 bg-deep shrink-0 z-20">
+                    <div className="p-4 border-b border-white/8 flex items-center justify-between text-xs font-mono text-muted-text">
+                        <span>TELEMETRY MAP</span>
+                        <span className="text-[10px] text-semantic-positive">LIVE</span>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-                        <div className="text-label-caps font-label-caps text-on-surface-variant mb-4 uppercase tracking-wider text-[10px]">Question Map</div>
-                        <div className="grid grid-cols-4 gap-2">
+                    {/* Question Grid */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        <div className="grid grid-cols-5 gap-1.5">
                             {exam?.questions?.map((_: any, idx: number) => {
                                 const isCurrent = currentQuestionIdx === idx;
                                 const isAnswered = answers[idx] !== undefined;
 
-                                let btnClasses = '';
+                                let btnStyle = 'border-white/8 bg-card text-muted-text hover:text-primary-text';
                                 if (isCurrent) {
-                                    btnClasses = 'bg-primary/20 border-primary text-primary font-bold';
+                                    btnStyle = 'border-accent bg-accent/20 text-accent font-medium';
                                 } else if (isAnswered) {
-                                    btnClasses = 'bg-secondary/15 border-secondary/40 text-secondary';
-                                } else {
-                                    btnClasses = 'bg-surface-container-high border-outline-variant/30 text-on-surface-variant';
+                                    btnStyle = 'border-white/20 bg-raised text-primary-text';
                                 }
 
                                 return (
                                     <button
                                         key={idx}
+                                        type="button"
                                         onClick={() => setCurrentQuestionIdx(idx)}
-                                        className={`w-8 h-8 rounded border flex items-center justify-center text-xs transition duration-150 cursor-pointer ${btnClasses}`}
+                                        className={`h-8 rounded border font-mono text-xs flex items-center justify-center transition-colors cursor-pointer ${btnStyle}`}
                                     >
                                         {idx + 1}
                                     </button>
@@ -501,8 +502,10 @@ export default function ExamPage({ params }: ExamPageProps) {
                             })}
                         </div>
                     </div>
+
+                    {/* Docked Sensor Camera at Bottom */}
                     {!isMobile && (
-                        <div className="p-6 border-t border-outline-variant/30 mt-auto">
+                        <div className="p-4 border-t border-white/8 bg-deep">
                             <WebcamProctor
                                 session_id={sessionId}
                                 exam_id={id as string}
@@ -511,118 +514,106 @@ export default function ExamPage({ params }: ExamPageProps) {
                             />
                         </div>
                     )}
-                </nav>
+                </aside>
 
-                {/* Main Content Area */}
-                <main className="flex-1 h-full overflow-y-auto relative bg-background p-margin-mobile md:p-margin-desktop scroll-smooth">
-                    <div className="max-w-3xl mx-auto h-full flex flex-col justify-center pt-8 pb-32">
-                        
-
-
+                {/* Central Question Workspace */}
+                <main className="flex-1 h-full overflow-y-auto p-6 md:p-12 flex flex-col items-center justify-center">
+                    <div className="w-full max-w-2xl space-y-6">
                         {currentQuestion && (
-                            <>
-                                {/* Question Index & Question Text */}
-                                <div className="flex justify-between items-end mb-6 gap-4">
-                                    <div>
-                                        <span className="text-primary font-body-bold text-xs tracking-wide uppercase">
-                                            Question {currentQuestionIdx + 1} of {exam?.questions?.length || 0}
+                            <div className="rounded-xl border border-white/8 bg-card p-6 sm:p-8 space-y-6 shadow-lg">
+                                <div className="flex justify-between items-center text-xs font-mono text-muted-text pb-3 border-b border-white/6">
+                                    <span>QUESTION {currentQuestionIdx + 1} OF {exam?.questions?.length || 0}</span>
+                                    {answers[currentQuestionIdx] !== undefined ? (
+                                        <span className="text-semantic-positive flex items-center gap-1">
+                                            <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                                            <span>Answer saved</span>
                                         </span>
-                                        <h2 className="text-headline-md font-headline-md font-bold text-on-surface mt-2 leading-snug">
-                                            {currentQuestion.question}
-                                        </h2>
-                                    </div>
+                                    ) : (
+                                        <span>Not answered</span>
+                                    )}
                                 </div>
 
-                                {/* Glass Card Question Box */}
-                                <div className="glass-card rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden flex flex-col">
-                                    {/* Subtle gradient blob background */}
-                                    <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
-                                    
-                                    <form className="space-y-4 relative z-10">
-                                        {currentQuestion.options?.map((opt: string, oIdx: number) => {
-                                            const optLetter = String.fromCharCode(65 + oIdx);
-                                            const isChecked = answers[currentQuestionIdx] === opt;
+                                <h2 className="text-base sm:text-lg font-medium text-primary-text leading-relaxed">
+                                    {currentQuestion.question}
+                                </h2>
 
-                                            return (
-                                                <div key={oIdx} className="relative">
-                                                    <input
-                                                        type="radio"
-                                                        id={`opt-${oIdx}`}
-                                                        name={`q_${currentQuestionIdx}`}
-                                                        value={opt}
-                                                        checked={isChecked}
-                                                        onChange={() => setAnswers({
-                                                            ...answers, [currentQuestionIdx]: opt
-                                                        })}
-                                                        className="peer sr-only"
-                                                    />
-                                                    <label
-                                                        htmlFor={`opt-${oIdx}`}
-                                                        className={`flex items-center p-4 sm:p-5 rounded-xl border cursor-pointer transition-all duration-200 group ${
-                                                            isChecked
-                                                                ? 'bg-primary/10 border-primary shadow-[0_0_15px_-5px_rgba(99,102,241,0.3)]'
-                                                                : 'border-outline-variant/30 bg-surface-container/30 hover:bg-surface-container/60'
-                                                        }`}
-                                                    >
-                                                        {/* Radio Circle */}
-                                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mr-4 shrink-0 transition-colors ${
-                                                            isChecked 
-                                                                ? 'border-primary bg-primary' 
-                                                                : 'border-outline-variant/80 group-hover:border-primary/50'
-                                                        }`}>
-                                                            <div className={`w-2 h-2 rounded-full ${isChecked ? 'bg-white' : 'bg-transparent'}`}></div>
-                                                        </div>
-                                                        <span className={`font-body-bold mr-4 text-sm ${isChecked ? 'text-primary' : 'text-slate-400'}`}>
-                                                            {optLetter}
-                                                        </span>
-                                                        <span className="text-sm font-medium text-slate-100">
-                                                            {opt}
-                                                        </span>
-                                                    </label>
-                                                </div>
-                                            );
-                                        })}
-                                    </form>
+                                <div className="space-y-2.5">
+                                    {currentQuestion.options?.map((opt: string, oIdx: number) => {
+                                        const optLetter = String.fromCharCode(65 + oIdx);
+                                        const isChecked = answers[currentQuestionIdx] === opt;
+
+                                        return (
+                                            <label
+                                                key={oIdx}
+                                                className={`flex items-center p-3.5 rounded-lg border text-xs sm:text-sm cursor-pointer transition-colors ${
+                                                    isChecked
+                                                        ? 'border-accent bg-accent/10 text-primary-text'
+                                                        : 'border-white/8 bg-canvas text-secondary-text hover:border-white/20 hover:text-primary-text'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name={`q_${currentQuestionIdx}`}
+                                                    value={opt}
+                                                    checked={isChecked}
+                                                    onChange={() => setAnswers({
+                                                        ...answers, [currentQuestionIdx]: opt
+                                                    })}
+                                                    className="sr-only"
+                                                />
+                                                <span className={`w-5 h-5 rounded-full border flex items-center justify-center mr-3 font-mono text-[11px] shrink-0 ${
+                                                    isChecked
+                                                        ? 'border-accent bg-accent text-white font-medium'
+                                                        : 'border-white/20 bg-raised text-muted-text'
+                                                }`}>
+                                                    {optLetter}
+                                                </span>
+                                                <span className="flex-1 leading-snug">{opt}</span>
+                                            </label>
+                                        );
+                                    })}
                                 </div>
-                            </>
+                            </div>
                         )}
 
-                        {/* Bottom Pagination Controls */}
-                        <div className="flex justify-between items-center mt-8">
+                        {/* Navigation Controls */}
+                        <div className="flex justify-between items-center pt-2">
                             <button
+                                type="button"
                                 onClick={() => setCurrentQuestionIdx(prev => Math.max(0, prev - 1))}
                                 disabled={currentQuestionIdx === 0}
-                                className={`px-6 py-3 rounded-lg border border-outline-variant/50 text-slate-300 font-body-bold flex items-center gap-2 transition-all ${
-                                    currentQuestionIdx === 0 
-                                        ? 'opacity-30 cursor-not-allowed' 
-                                        : 'hover:bg-surface-container-high hover:text-white cursor-pointer'
-                                }`}
+                                className="h-9 px-4 rounded-md border border-white/8 bg-card hover:bg-raised text-primary-text text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                             >
-                                <span>←</span> Previous
+                                <ArrowLeft className="w-3.5 h-3.5" strokeWidth={1.5} />
+                                <span>Previous</span>
                             </button>
+
                             {currentQuestionIdx < (exam?.questions?.length || 0) - 1 ? (
                                 <button
+                                    type="button"
                                     onClick={() => setCurrentQuestionIdx(prev => prev + 1)}
-                                    className="px-8 py-3 rounded-lg bg-primary text-slate-950 font-body-bold flex items-center gap-2 hover:opacity-90 transition-all hover:shadow-[0_0_20px_rgba(192,193,255,0.4)] hover:-translate-y-0.5 cursor-pointer"
+                                    className="h-9 px-5 rounded-md bg-primary-text hover:bg-white text-canvas text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer"
                                 >
-                                    Next Question <span>→</span>
+                                    <span>Next</span>
+                                    <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
                                 </button>
                             ) : (
                                 <button
+                                    type="button"
                                     onClick={handleSubmit}
-                                    className="px-8 py-3 rounded-lg bg-emerald-600 text-white font-body-bold flex items-center gap-2 hover:bg-emerald-500 transition-all hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:-translate-y-0.5 cursor-pointer"
+                                    className="h-9 px-5 rounded-md bg-semantic-positive hover:opacity-90 text-canvas text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer"
                                 >
-                                    Submit
+                                    <span>Finish exam</span>
+                                    <Check className="w-3.5 h-3.5" strokeWidth={1.5} />
                                 </button>
                             )}
                         </div>
-
                     </div>
                 </main>
 
-                {/* Floating Proctoring Widget Wrapper (Mobile only) */}
+                {/* Mobile Floating Camera */}
                 {isMobile && (
-                    <div className="fixed bottom-6 right-6 z-40 w-48">
+                    <div className="fixed bottom-4 right-4 z-40 w-44 shadow-2xl">
                         <WebcamProctor
                             session_id={sessionId}
                             exam_id={id as string}
