@@ -1,21 +1,21 @@
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { ArrowRight, Eye, ShieldCheck, Cpu, Terminal, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, Eye, ShieldCheck, Cpu, Terminal } from 'lucide-react';
 
 export default function Home() {
     return (
         <main className="min-h-screen bg-canvas text-primary-text flex flex-col justify-between selection:bg-accent selection:text-white">
             <Navbar showTelemetry={true} />
 
-            {/* Asymmetric Hero Section */}
+            {/* Hero Section */}
             <div className="w-full max-w-6xl mx-auto px-6 py-16 md:py-24 flex-1 flex flex-col justify-center">
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
-                    
-                    {/* Left Column: Clear, Non-Hype Headline & Actions */}
+
+                    {/* Left Column */}
                     <div className="lg:col-span-7 flex flex-col items-start">
                         <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-card border border-white/8 text-secondary-text text-xs font-mono mb-6">
                             <span className="w-1.5 h-1.5 rounded-full bg-semantic-positive"></span>
-                            <span>Continuous exam telemetry v2.4</span>
+                            <span>System encryption active</span>
                         </div>
 
                         <h1 className="text-4xl sm:text-5xl lg:text-6xl font-medium tracking-tight text-primary-text leading-[1.08] mb-6">
@@ -59,67 +59,44 @@ export default function Home() {
                         </div>
                     </div>
 
-                    {/* Right Column: The Polished Product Telemetry Moment */}
-                    <div className="lg:col-span-5 w-full">
-                        <div className="rounded-xl border border-white/8 bg-deep overflow-hidden shadow-xl">
-                            {/* Terminal Window Header */}
-                            <div className="px-4 py-2.5 bg-canvas border-b border-white/8 flex items-center justify-between text-xs font-mono text-muted-text">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-raised" />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-raised" />
-                                    <div className="w-2.5 h-2.5 rounded-full bg-raised" />
-                                    <span className="text-[11px] text-secondary-text ml-2">monitor://session-live</span>
-                                </div>
-                                <span className="text-semantic-positive text-[10px] tracking-wider uppercase">Active sensor</span>
-                            </div>
+                    {/* Right Column — Technical Abstract Visual */}
+                    <div className="lg:col-span-5 w-full flex items-center justify-center lg:justify-end">
+                        <div className="relative w-full max-w-[400px] aspect-square rounded-lg border border-white/8 bg-card overflow-hidden shadow-card">
+                            {/* Static Grid & Radar-style visual (No fake numbers) */}
+                            <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle, rgba(237,237,237,0.15) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
 
-                            {/* Simulated Proctoring Stream */}
-                            <div className="p-4 bg-card relative">
-                                <div className="h-44 rounded-lg bg-deep border border-white/8 relative overflow-hidden flex items-center justify-center">
-                                    {/* Camera wireframe mock */}
-                                    <div className="absolute inset-4 border border-dashed border-accent/40 rounded flex flex-col justify-between p-2 font-mono text-[9px] text-accent/80">
-                                        <div className="flex justify-between">
-                                            <span>FACE_BOUNDS [318, 142, 220, 240]</span>
-                                            <span>CONF: 99.4%</span>
-                                        </div>
-                                        <div className="self-center w-20 h-24 border border-white/20 rounded-full flex items-center justify-center">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-semantic-positive" />
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>GAZE: CENTER</span>
-                                            <span>YAW: -1.2° PITCH: +0.4°</span>
-                                        </div>
+                            {/* Centered technical ring */}
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-48 h-48 rounded-full border border-white/10 flex items-center justify-center relative">
+                                    <div className="w-32 h-32 rounded-full border border-white/5" />
+                                    <div className="w-64 h-64 rounded-full border border-white/5 absolute" />
+
+                                    {/* Abstract sensor scan line */}
+                                    <div className="absolute w-[1px] h-24 bg-gradient-to-t from-accent to-transparent origin-bottom animate-[spin_4s_linear_infinite]" style={{ bottom: '50%' }} />
+
+                                    {/* Static technical markers */}
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full pb-2">
+                                        <div className="w-[1px] h-4 bg-white/20" />
+                                    </div>
+                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full pt-2">
+                                        <div className="w-[1px] h-4 bg-white/20" />
+                                    </div>
+                                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full pr-2">
+                                        <div className="h-[1px] w-4 bg-white/20" />
+                                    </div>
+                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2">
+                                        <div className="h-[1px] w-4 bg-white/20" />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Live Telemetry Log Lines */}
-                            <div className="p-4 bg-deep border-t border-white/8 font-mono text-xs space-y-2">
-                                <div className="flex items-center justify-between text-[11px] text-muted-text pb-1 border-b border-white/4">
-                                    <span>EVENT FEED</span>
-                                    <span>TIMESTAMP</span>
+                            {/* Status label without fake data */}
+                            <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center px-3 py-2 bg-deep/80 border border-white/8 rounded-md">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-semantic-positive" />
+                                    <span className="text-[10px] font-mono text-muted-text uppercase tracking-wider">Interface verified</span>
                                 </div>
-                                <div className="flex items-center justify-between text-secondary-text">
-                                    <span className="flex items-center gap-1.5 truncate">
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-semantic-positive shrink-0" strokeWidth={1.5} />
-                                        <span>Candidate identity verified</span>
-                                    </span>
-                                    <span className="text-muted-text text-[10px] tabular-nums">14:02:11.04</span>
-                                </div>
-                                <div className="flex items-center justify-between text-secondary-text">
-                                    <span className="flex items-center gap-1.5 truncate">
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-semantic-positive shrink-0" strokeWidth={1.5} />
-                                        <span>Full display capture established</span>
-                                    </span>
-                                    <span className="text-muted-text text-[10px] tabular-nums">14:02:13.20</span>
-                                </div>
-                                <div className="flex items-center justify-between text-secondary-text">
-                                    <span className="flex items-center gap-1.5 truncate">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-accent ml-1 shrink-0" />
-                                        <span className="ml-1">Telemetry stream synchronized</span>
-                                    </span>
-                                    <span className="text-muted-text text-[10px] tabular-nums">14:02:15.33</span>
-                                </div>
+                                <ShieldCheck className="w-3.5 h-3.5 text-muted-text" strokeWidth={1.5} />
                             </div>
                         </div>
                     </div>
@@ -133,7 +110,7 @@ export default function Home() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="p-6 rounded-lg bg-card border border-white/8">
+                        <div className="p-6 rounded-md bg-card border border-white/8">
                             <div className="w-8 h-8 rounded-md bg-raised border border-white/8 flex items-center justify-center mb-4">
                                 <Eye className="w-4 h-4 text-primary-text" strokeWidth={1.5} />
                             </div>
@@ -145,7 +122,7 @@ export default function Home() {
                             </p>
                         </div>
 
-                        <div className="p-6 rounded-lg bg-card border border-white/8">
+                        <div className="p-6 rounded-md bg-card border border-white/8">
                             <div className="w-8 h-8 rounded-md bg-raised border border-white/8 flex items-center justify-center mb-4">
                                 <Terminal className="w-4 h-4 text-primary-text" strokeWidth={1.5} />
                             </div>
@@ -157,7 +134,7 @@ export default function Home() {
                             </p>
                         </div>
 
-                        <div className="p-6 rounded-lg bg-card border border-white/8">
+                        <div className="p-6 rounded-md bg-card border border-white/8">
                             <div className="w-8 h-8 rounded-md bg-raised border border-white/8 flex items-center justify-center mb-4">
                                 <Cpu className="w-4 h-4 text-primary-text" strokeWidth={1.5} />
                             </div>
