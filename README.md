@@ -1,6 +1,6 @@
-# ExamProctorAI
+# ExamProctor
 
-ExamProctorAI is a full-stack, microservices-based online examination proctoring platform designed to enforce academic integrity during remote assessments. It combines client-side browser lockdown mechanisms, real-time computer vision inference (face presence, eye aspect ratio blink tracking, and head/gaze estimation), live examiner telemetry streaming via WebSockets, and asynchronous post-exam incident reviews powered by Gemini 3.5 Flash Lite.
+ExamProctor is a full-stack, microservices-based online examination proctoring platform designed to enforce academic integrity during remote assessments. It combines client-side browser lockdown mechanisms, real-time computer vision inference (face presence, eye aspect ratio blink tracking, and head/gaze estimation), live examiner telemetry streaming via WebSockets, and asynchronous post-exam incident reviews powered by Gemini 3.5 Flash Lite.
 
 The platform is designed with a fallback-first architecture: it operates fully offline in local environments (using SQLite/local disk storage and in-memory caches) and scales into production with PostgreSQL, Redis, and Supabase Storage.
 
