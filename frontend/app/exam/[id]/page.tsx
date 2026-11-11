@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Shield, Clock, FileText, CheckCircle2, AlertTriangle, ArrowLeft, ArrowRight, Loader2, Check } from 'lucide-react';
-import { getExam, submitExam } from '@/lib/api';
+import { getExam, submitExam, logProctorEvent } from '@/lib/api';
 import WebcamProctor from '@/components/WebcamProctor';
 import ExamTimer from '@/components/ExamTimer';
 import AlertBanner from '@/components/AlertBanner';
@@ -24,7 +24,7 @@ export default function ExamPage({ params }: ExamPageProps) {
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [alerts, setAlerts] = useState<string[]>([]);
     const [consented, setConsented] = useState(false);
-    const [sessionId, setSessionId] = useState('');
+    const [sessionId] = useState<string>(() => `session_${Date.now()}`);
     const [user, setUser] = useState<any>(null);
     
     const [currentQuestionIdx, setCurrentQuestionIdx] = useState<number>(0);
@@ -49,9 +49,9 @@ export default function ExamPage({ params }: ExamPageProps) {
         }
         
         try {
-            setUser(JSON.parse(stored));
+            const parsed = JSON.parse(stored);
+            setTimeout(() => setUser(parsed), 0);
         } catch {}
-        setSessionId(`session_${Date.now()}`);
 
         getExam(id as string)
             .then(res => setExam(res.data))
@@ -72,18 +72,11 @@ export default function ExamPage({ params }: ExamPageProps) {
     const logFlag = useCallback(async (type: string, detail: string) => {
         setAlerts(prev => prev.includes(type) ? prev : [...prev, type]);
         try {
-            await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/proctor/log-event`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    exam_id: id,
-                    alert_type: type,
-                    detail: detail
-                })
+            await logProctorEvent({
+                session_id: sessionId,
+                exam_id: id as string,
+                alert_type: type,
+                detail: detail
             });
         } catch (err) {
             console.error('Failed to log flag:', err);

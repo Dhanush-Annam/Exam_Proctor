@@ -165,10 +165,6 @@ export default function DashboardPage({ params }: DashboardPageProps) {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 5;
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm, verdictFilter]);
-
     // Create & Edit Exam states
     const [editingExamId, setEditingExamId] = useState<string | null>(null);
     const [examTitle, setExamTitle] = useState('');
@@ -237,22 +233,35 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                 router.push('/exam');
                 return;
             }
-            setUser(parsed);
+            setTimeout(() => setUser(parsed), 0);
         } catch {
             router.push('/login');
             return;
         }
 
-        loadDashboardData();
+        const initialLoadTimer = setTimeout(() => {
+            loadDashboardData();
+        }, 0);
 
         // WebSocket for examiner live alerts
         const socket = connectExaminerSocket();
-        socket.on('new_session_alert', (payload: any) => {
-            showToast(`Live alert: ${payload.studentName} flagged in ${payload.examTitle}`, 'warning');
+        const handleLiveAlert = (payload: any) => {
+            const student = payload.studentName || 'Student';
+            const exam = payload.examTitle ? ` in "${payload.examTitle}"` : '';
+            const alertsText = payload.alerts ? payload.alerts.join(', ') : (payload.detail || 'Violation detected');
+            showToast(`Live alert: ${student}${exam} — ${alertsText}`, 'warning');
+            loadDashboardData();
+        };
+
+        socket.on('live_proctor_alert', handleLiveAlert);
+        socket.on('new_session_alert', handleLiveAlert);
+        socket.on('session_review_complete', (payload: any) => {
+            showToast(`AI review completed for session ${payload.session_id}`, 'info');
             loadDashboardData();
         });
 
         return () => {
+            clearTimeout(initialLoadTimer);
             disconnectSocket();
         };
     }, [router, loadDashboardData, showToast]);
@@ -854,7 +863,10 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                     <input
                                         type="text"
                                         value={searchTerm}
-                                        onChange={e => setSearchTerm(e.target.value)}
+                                        onChange={e => {
+                                            setSearchTerm(e.target.value);
+                                            setCurrentPage(1);
+                                        }}
                                         placeholder="Search student, exam, or session ID..."
                                         className="w-full h-8 pl-8 pr-3 bg-canvas border border-white/8 focus:border-accent rounded text-xs text-primary-text placeholder-muted-text focus:outline-none transition-colors"
                                     />
@@ -865,7 +877,10 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                                         <button
                                             key={verdict}
                                             type="button"
-                                            onClick={() => setVerdictFilter(verdict)}
+                                            onClick={() => {
+                                                setVerdictFilter(verdict);
+                                                setCurrentPage(1);
+                                            }}
                                             className={`h-8 px-3 rounded text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer ${
                                                 verdictFilter === verdict
                                                     ? 'bg-raised text-primary-text border border-white/20'
@@ -1067,6 +1082,7 @@ export default function DashboardPage({ params }: DashboardPageProps) {
                             <div className="lg:col-span-7 flex flex-col gap-4 overflow-y-auto pr-1">
                                 <div className="h-64 rounded-lg bg-deep border border-white/8 relative overflow-hidden flex items-center justify-center">
                                     {selectedFlag && selectedFlag.image_path ? (
+                                        /* eslint-disable-next-line @next/next/no-img-element */
                                         <img
                                             src={selectedFlag.image_path.startsWith('http')
                                                 ? selectedFlag.image_path

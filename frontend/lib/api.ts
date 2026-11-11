@@ -47,6 +47,13 @@ export const getFlags = (session_id: string) =>
 export const getProctorSessions = () =>
     API.get('/api/proctor/sessions');
 
+export const logProctorEvent = (data: {
+    session_id: string;
+    exam_id: string;
+    alert_type: string;
+    detail?: string;
+}) => API.post('/api/proctor/log-event', data);
+
 // ── Submissions ──────────────────────────────────────────
 export const submitExam = (
     exam_id   : string,

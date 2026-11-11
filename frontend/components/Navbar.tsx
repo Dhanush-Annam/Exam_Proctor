@@ -16,7 +16,8 @@ export default function Navbar({ showTelemetry = false }: NavbarProps) {
         try {
             const stored = localStorage.getItem('user');
             if (stored) {
-                setUser(JSON.parse(stored));
+                const parsed = JSON.parse(stored);
+                setTimeout(() => setUser(parsed), 0);
             }
         } catch {
             // ignore JSON parse error
