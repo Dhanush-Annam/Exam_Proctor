@@ -10,7 +10,7 @@ const User    = require('../models/User');
 const Exam    = require('../models/Exam');
 const Submission = require('../models/Submission');
 const sequelize  = require('../models/index');
-const { sendAlert } = require('../socket');
+const { sendAlert, sendReviewComplete } = require('../socket');
 const { Op }     = require('sequelize');
 const router  = express.Router();
 
@@ -34,7 +34,10 @@ function verifySignature(req, res, next) {
     const hmac = crypto.createHmac('sha256', webhookSecret);
     const rawBody = req.rawBody ? req.rawBody : JSON.stringify(req.body);
     const computedSignature = hmac.update(rawBody).digest('hex');
-    if (signature !== computedSignature) {
+    
+    const sigBuf = Buffer.from(signature, 'utf8');
+    const compBuf = Buffer.from(computedSignature, 'utf8');
+    if (sigBuf.length !== compBuf.length || !crypto.timingSafeEqual(sigBuf, compBuf)) {
         console.warn(`[Webhook Verification Failed] Expected signature: ${computedSignature}, Received signature: ${signature}. rawBody length: ${rawBody ? rawBody.length : 0}. Secret length: ${webhookSecret ? webhookSecret.length : 0}`);
         return res.status(403).json({ error: 'Invalid webhook signature' });
     }
@@ -222,7 +225,7 @@ router.post('/analyze', auth, proctorLimiter, upload.single('frame'), async (req
         form.append('session_id', session_id);
 
         const aiResponse = await axios.post(
-            `${process.env.AI_SERVICE_URL}/analyze`,
+            `${process.env.AI_SERVICE_URL || 'http://localhost:8000'}/analyze`,
             form,
             { headers: form.getHeaders() }
         );
@@ -236,7 +239,9 @@ router.post('/analyze', auth, proctorLimiter, upload.single('frame'), async (req
                 gaze: result.gaze,
                 face_count: result.face_count,
                 yaw: result.yaw,
-                pitch: result.pitch
+                pitch: result.pitch,
+                studentName: req.user.name,
+                examTitle: exam.title
             });
 
             for (const alertType of result.alerts) {
@@ -264,6 +269,7 @@ router.post('/analyze', auth, proctorLimiter, upload.single('frame'), async (req
 
         res.json(result);
     } catch (err) {
+        console.error('Proctor analyze error:', err.message);
         res.status(500).json({ error: 'An error occurred during proctor analysis.' });
     }
 });
@@ -280,6 +286,10 @@ router.get('/sessions', auth, async (req, res) => {
             attributes: ['id']
         });
         const myExamIds = myExams.map(e => e.id);
+
+        if (myExamIds.length === 0) {
+            return res.json([]);
+        }
 
         // Get all submissions for these exams (representing all student test attempts)
         const submissions = await Submission.findAll({
@@ -360,11 +370,13 @@ router.get('/sessions', auth, async (req, res) => {
 router.post('/session/:session_id/review-complete', verifySignature, async (req, res) => {
     try {
         const { session_id } = req.params;
-        const { flags } = req.body;
+        const { flags, session_verdict, summary } = req.body;
         
         if (flags && Array.isArray(flags)) {
             for (const flag of flags) {
                 if (flag.image_path) {
+                    const normalizedSlash = flag.image_path.replace(/\\/g, '/');
+                    const normalizedBackslash = flag.image_path.replace(/\//g, '\\');
                     await Flag.update(
                         {
                             ai_verdict: flag.ai_verdict,
@@ -373,15 +385,21 @@ router.post('/session/:session_id/review-complete', verifySignature, async (req,
                         {
                             where: {
                                 session_id,
-                                image_path: flag.image_path
+                                [Op.or]: [
+                                    { image_path: flag.image_path },
+                                    { image_path: normalizedSlash },
+                                    { image_path: normalizedBackslash }
+                                ]
                             }
                         }
                     );
                 }
             }
         }
+        sendReviewComplete(session_id, { session_verdict, summary });
         res.json({ success: true, message: 'Verdicts successfully updated' });
     } catch (err) {
+        console.error('Failed to update verdicts:', err);
         res.status(500).json({ error: 'Failed to update verdicts.' });
     }
 });
@@ -474,7 +492,9 @@ router.post('/log-event', auth, async (req, res) => {
 
         sendAlert(session_id, {
             alerts: [alert_type],
-            detail: detail || ''
+            detail: detail || '',
+            studentName: req.user.name,
+            examTitle: exam.title
         });
 
         await Flag.create({

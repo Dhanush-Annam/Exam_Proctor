@@ -38,4 +38,15 @@ function sendAlert(session_id, alertData) {
     }
 }
 
-module.exports = { initSocket, sendAlert };
+// Notify examiners that post-exam automated review has concluded
+function sendReviewComplete(session_id, reviewData = {}) {
+    if (io) {
+        io.to('examiners').emit('session_review_complete', { session_id, ...reviewData });
+    }
+}
+
+function getIO() {
+    return io;
+}
+
+module.exports = { initSocket, sendAlert, sendReviewComplete, getIO };

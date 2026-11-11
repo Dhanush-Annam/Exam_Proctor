@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path       = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const dns = require('dns');
 if (dns.setDefaultResultOrder) {
     dns.setDefaultResultOrder('ipv4first');
@@ -6,7 +7,6 @@ if (dns.setDefaultResultOrder) {
 const express    = require('express');
 const http       = require('http');
 const cors       = require('cors');
-const path       = require('path');
 const axios      = require('axios');
 const sequelize  = require('./models/index');
 const { initSocket } = require('./socket');
@@ -86,18 +86,23 @@ const PORT = process.env.PORT || 3001;
 // In deployment/production, alter: true causes PostgreSQL error 0A000 on columns referenced by RLS policies
 // and creates duplicate constraints on each restart.
 const shouldAlter = process.env.DB_SYNC_ALTER === 'true';
-sequelize.sync({ alter: shouldAlter })
-    .then(() => {
-        console.log('Database synced');
-        server.listen(PORT, () => {
-            console.log(`Backend running on http://localhost:${PORT}`);
-            console.log('Endpoints:');
-            console.log('  POST /api/auth/register');
-            console.log('  POST /api/auth/login');
-            console.log('  GET  /api/exams');
-            console.log('  POST /api/exams');
-            console.log('  POST /api/proctor/analyze');
-            console.log('  GET  /api/proctor/flags/:session_id');
-        });
-    })
-    .catch(err => console.error('DB sync failed:', err));
+
+if (require.main === module) {
+    sequelize.sync({ alter: shouldAlter })
+        .then(() => {
+            console.log('Database synced');
+            server.listen(PORT, () => {
+                console.log(`Backend running on http://localhost:${PORT}`);
+                console.log('Endpoints:');
+                console.log('  POST /api/auth/register');
+                console.log('  POST /api/auth/login');
+                console.log('  GET  /api/exams');
+                console.log('  POST /api/exams');
+                console.log('  POST /api/proctor/analyze');
+                console.log('  GET  /api/proctor/flags/:session_id');
+            });
+        })
+        .catch(err => console.error('DB sync failed:', err));
+}
+
+module.exports = { app, server, sequelize };
