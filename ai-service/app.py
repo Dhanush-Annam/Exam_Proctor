@@ -29,10 +29,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
+BASE_DIR  = Path(__file__).resolve().parent
+FLAGS_DIR = BASE_DIR / "flags"
+
 # ── Load Models Once at Startup ──────────────────────────
 face_detector = FaceDetector(
-    prototxt   ="models/deploy.prototxt",
-    caffemodel ="models/res10_300x300_ssd_iter_140000.caffemodel"
+    prototxt   = str(BASE_DIR / "models" / "deploy.prototxt"),
+    caffemodel = str(BASE_DIR / "models" / "res10_300x300_ssd_iter_140000.caffemodel")
 )
 ear_detector  = EARDetector(threshold=0.15, consec_frames=8)
 gaze_detector = GazeDetector()
@@ -108,7 +111,7 @@ async def analyze(
     frame     : UploadFile = File(...),
     session_id: str        = Form(...)
 ):
-    flag_manager = FlagManager(session_id)
+    flag_manager = FlagManager(session_id, flags_root=str(FLAGS_DIR))
     ear_counter  = get_ear_counter(session_id)
 
     # Decode frame
@@ -186,7 +189,7 @@ async def analyze(
     }
 
 def ensure_local_report(session_id: str) -> bool:
-    session_dir = Path("flags") / session_id
+    session_dir = FLAGS_DIR / session_id
     report_path = session_dir / "session_report.json"
     if report_path.exists():
         return True
@@ -223,8 +226,8 @@ def ensure_local_report(session_id: str) -> bool:
 def get_report(session_id: str):
     import json
     ensure_local_report(session_id)
-    path = os.path.join("flags", session_id, "session_report.json")
-    if not os.path.exists(path):
+    path = FLAGS_DIR / session_id / "session_report.json"
+    if not path.exists():
         raise HTTPException(status_code=404, detail="Session not found")
     with open(path) as f:
         return JSONResponse(content=json.load(f))
@@ -271,7 +274,7 @@ def run_review_and_callback(session_dir: Path, session_id: str):
 @app.post("/session/{session_id}/end")
 def end_session(session_id: str, background_tasks: BackgroundTasks):
     # 1. End the active session if in memory to write the initial report
-    flag_manager = FlagManager(session_id)
+    flag_manager = FlagManager(session_id, flags_root=str(FLAGS_DIR))
     flag_manager.end()
     
     with local_sessions_lock:
@@ -282,7 +285,7 @@ def end_session(session_id: str, background_tasks: BackgroundTasks):
     if not ensure_local_report(session_id):
         raise HTTPException(status_code=404, detail="Session report not found")
         
-    session_dir = Path("flags") / session_id
+    session_dir = FLAGS_DIR / session_id
     # Schedule the Gemini review in the background
     background_tasks.add_task(run_review_and_callback, session_dir, session_id)
     

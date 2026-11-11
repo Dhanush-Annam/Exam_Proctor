@@ -190,7 +190,14 @@ def process_session(session_dir: Path, dry_run: bool = False) -> dict:
 
     if not pending:
         print("  [OK] All flags already reviewed.")
-        return {"session_id": session_id, "reviewed": 0, "already_done": total}
+        return {
+            "session_id"     : session_id,
+            "reviewed"       : 0,
+            "already_done"   : total,
+            "session_verdict": report.get("ai_session_verdict", "NORMAL"),
+            "summary"        : report.get("ai_summary", "All flags reviewed"),
+            "flags"          : flags
+        }
 
     reviewed = 0
     interval = 60 / RPM_LIMIT
@@ -279,7 +286,8 @@ def process_session(session_dir: Path, dry_run: bool = False) -> dict:
         "session_id"     : session_id,
         "reviewed"       : reviewed,
         "session_verdict": session_verdict,
-        "summary"        : report["ai_summary"]
+        "summary"        : report["ai_summary"],
+        "flags"          : report.get("flags", [])
     }
 
 # ── Entry point ──────────────────────────────────────────────────────────────

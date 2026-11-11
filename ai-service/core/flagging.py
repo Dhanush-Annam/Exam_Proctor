@@ -2,8 +2,12 @@ import cv2
 import os
 import json
 import time
+import threading
 from datetime import datetime
 import redis
+
+local_flag_states = {}
+local_flag_lock = threading.Lock()
 
 redis_url = os.environ.get("REDIS_URL")
 redis_host = os.environ.get("REDIS_HOST")
@@ -50,20 +54,44 @@ class FlagManager:
                     return
             except Exception as e:
                 print(f"[Redis] Error loading state for {self.session_id}: {e}")
+
+        with local_flag_lock:
+            if self.session_id in local_flag_states:
+                state = local_flag_states[self.session_id]
+                self.flag_counter = state.get("flag_counter", 0)
+                self.last_alert_times = state.get("last_alert_times", {})
+                self.flags = state.get("flags", [])
+                return
+
+        # Check if existing session_report.json on disk
+        report_file = os.path.join(self.flags_dir, "session_report.json")
+        if os.path.exists(report_file):
+            try:
+                with open(report_file, "r") as f:
+                    data = json.load(f)
+                    self.flags = data.get("flags", [])
+                    self.flag_counter = data.get("total_flags", len(self.flags))
+                    self.last_alert_times = {}
+                    return
+            except Exception:
+                pass
         
         self.flag_counter = 0
         self.last_alert_times = {}
         self.flags = []
 
     def _save_state(self):
+        state = {
+            "flag_counter": self.flag_counter,
+            "last_alert_times": self.last_alert_times,
+            "flags": self.flags
+        }
+        with local_flag_lock:
+            local_flag_states[self.session_id] = state
+
         global redis_client
         if redis_client:
             try:
-                state = {
-                    "flag_counter": self.flag_counter,
-                    "last_alert_times": self.last_alert_times,
-                    "flags": self.flags
-                }
                 redis_client.setex(f"proctor:session:{self.session_id}:state", 86400, json.dumps(state))
             except Exception as e:
                 print(f"[Redis] Error saving state for {self.session_id}: {e}")
@@ -229,7 +257,11 @@ class FlagManager:
             json.dump(report, f, indent=2)
         self._upload_report_to_supabase(report)
 
-        # Clear Redis state since session has ended
+        # Clear in-memory & Redis state since session has ended
+        with local_flag_lock:
+            if self.session_id in local_flag_states:
+                del local_flag_states[self.session_id]
+
         global redis_client
         if redis_client:
             try:
