@@ -56,7 +56,7 @@ export default function AlertBanner({ alerts, onClear }: AlertBannerProps) {
                     <AlertTriangle className="w-4 h-4 shrink-0 text-semantic-warning" strokeWidth={1.5} />
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium tracking-wide uppercase text-[10px] bg-black/30 px-1.5 py-0.5 rounded border border-current/20">
+                    <span className="font-medium tracking-wide uppercase text-[10px] bg-black/30 px-1.5 py-0.5 rounded-md border border-current/20">
                         {hasCritical ? 'Critical security event' : 'Suspicious telemetry'}
                     </span>
                     <span className="text-primary-text truncate">

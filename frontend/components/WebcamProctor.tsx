@@ -110,7 +110,7 @@ export default function WebcamProctor({
     }, [active, session_id, exam_id, onAlert]);
 
     return (
-        <div className="w-full rounded-lg overflow-hidden border border-white/8 bg-card flex flex-col">
+        <div className="w-full rounded-md overflow-hidden border border-white/8 bg-card flex flex-col">
             {/* Camera Feed Container */}
             <div className="relative h-44 bg-deep w-full overflow-hidden flex items-center justify-center">
                 <video

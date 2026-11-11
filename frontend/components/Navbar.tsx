@@ -45,9 +45,7 @@ export default function Navbar({ showTelemetry = false }: NavbarProps) {
                 {showTelemetry && (
                     <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-muted-text border-l border-white/8 pl-4">
                         <span className="w-1.5 h-1.5 rounded-full bg-semantic-positive"></span>
-                        <span className="tabular-nums">42ms</span>
-                        <span>•</span>
-                        <span className="text-[11px] uppercase tracking-wider">Live telemetry</span>
+                        <span className="text-[11px] uppercase tracking-wider">Live telemetry active</span>
                     </div>
                 )}
             </div>
@@ -94,3 +92,4 @@ export default function Navbar({ showTelemetry = false }: NavbarProps) {
         </header>
     );
 }
+

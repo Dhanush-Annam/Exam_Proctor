@@ -47,7 +47,7 @@ export default function RegisterPage() {
             </Link>
 
             {/* Auth Card */}
-            <div className="w-full max-w-sm rounded-xl border border-white/8 bg-card p-8 shadow-xl">
+            <div className="w-full max-w-sm rounded-lg border border-white/8 bg-card p-8 shadow-card">
                 <div className="mb-6">
                     <h1 className="text-xl font-medium tracking-tight text-primary-text">
                         Create account
